@@ -83,7 +83,7 @@ Parameters:
 
   BedrockModelId:
     Type: String
-    Default: "anthropic.claude-3-5-sonnet-20241022-v2:0"
+    Default: "global.amazon.nova-2-lite-v1:0"
     Description: "Bedrock model ID used by the Agent Container inside AgentCore Runtime"
 
   EnableAgentCoreMemory:

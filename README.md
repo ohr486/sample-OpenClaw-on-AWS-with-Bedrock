@@ -238,20 +238,23 @@ Switch models with one CloudFormation parameter — no code changes:
 
 Best for most users. Fixed cost, full control, 24/7 availability.
 
-### Serverless (AgentCore Runtime) — [README_AGENTCORE.md](README_AGENTCORE.md)
+### Multi-Tenant Platform (AgentCore Runtime) — [README_AGENTCORE.md](README_AGENTCORE.md)
 
-> ⚠️ Work in progress — requires building a custom Docker image.
+> ⚠️ In development — targeting v1.0 by June 2026. [Roadmap →](ROADMAP.md)
 
-Multi-tenant, pay-per-use, auto-scaling. Best for variable workloads:
+Turn OpenClaw from a single-user tool into an enterprise platform: every employee gets an AI assistant, every team gets an AI assistant, every department gets an AI assistant — with clear boundaries, shared skills, and centralized governance.
 
-| | EC2 | AgentCore |
-|---|---|---|
-| Cost model | Fixed 24/7 | Pay-per-invocation |
-| Scaling | Manual | Automatic |
-| Isolation | Shared instance | microVM per tenant |
-| Typical cost | $50/mo | $15-30/mo |
+| What you get | How |
+|---|---|
+| Tenant isolation | Firecracker microVM per user (AgentCore Runtime) |
+| Shared model access | One Bedrock account, per-tenant metering (~$1-2/person/month) |
+| Shared skills with bundled SaaS keys | Install once, authorize per tenant, credentials never exposed |
+| Per-tenant permission profiles | SSM-based rules, hot-reload, Plan A + E enforcement |
+| Controlled info sharing | Cross-tenant data policies, audited, opt-in |
+| Human approval workflow | Auth Agent → admin notification → approve/reject via messaging |
+| Elastic compute | Auto-scaling microVMs, burst capacity, pay-per-use |
 
-**[→ AgentCore Guide](README_AGENTCORE.md)**
+**[→ Full Multi-Tenant Guide](README_AGENTCORE.md)** · **[→ Roadmap](ROADMAP.md)**
 
 ### macOS (Apple Silicon) — For iOS/macOS Development
 
@@ -333,11 +336,16 @@ Step-by-step deployment guide: [DEPLOYMENT.md](DEPLOYMENT.md)
 
 ## Contributing
 
-1. Fork the repository
-2. Create a feature branch
-3. Submit a pull request
+We're building the enterprise OpenClaw platform in the open — from single-user deployment to multi-tenant SaaS. Whether you're an enterprise architect, a skill developer, a security researcher, or just someone who wants a better AI assistant, there's a place for you.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+Areas where we need help most:
+- End-to-end multi-tenant testing
+- Skills with bundled SaaS credentials (Jira, Salesforce, SAP)
+- Agent-to-agent orchestration
+- Cost benchmarking (AgentCore vs EC2)
+- Security audits and penetration testing
+
+**[→ Roadmap](ROADMAP.md)** · **[→ Contributing Guide](CONTRIBUTING.md)** · **[→ GitHub Issues](https://github.com/aws-samples/sample-OpenClaw-on-AWS-with-Bedrock/issues)**
 
 ## Resources
 

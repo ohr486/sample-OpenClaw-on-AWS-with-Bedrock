@@ -95,6 +95,9 @@ def invoke_agent_runtime(
 ) -> dict:
     """Invoke AgentCore Runtime with tenant isolation.
 
+    In production: calls AgentCore Runtime API (Firecracker microVM per tenant).
+    In demo mode: calls local Agent Container directly (AGENT_CONTAINER_URL env var).
+
     Args:
         tenant_id: Derived tenant identifier, used as sessionId
         message: User message text
@@ -104,14 +107,65 @@ def invoke_agent_runtime(
         Agent response dict with 'response' key
 
     Raises:
-        RuntimeError: If AgentCore invocation fails
+        RuntimeError: If invocation fails
     """
+    # Demo mode: call local Agent Container directly
+    local_url = os.environ.get("AGENT_CONTAINER_URL")
+    if local_url:
+        return _invoke_local_container(local_url, tenant_id, message, model)
+
+    # Production mode: call AgentCore Runtime API
     if not RUNTIME_ID:
         raise RuntimeError(
             "AGENTCORE_RUNTIME_ID not configured. "
             "Set it in SSM or environment after creating the AgentCore Runtime."
         )
 
+    return _invoke_agentcore(tenant_id, message, model)
+
+
+def _invoke_local_container(
+    base_url: str, tenant_id: str, message: str, model: Optional[str]
+) -> dict:
+    """Call a local Agent Container server.py directly (demo/testing mode)."""
+    import requests
+
+    payload = {
+        "sessionId": tenant_id,
+        "tenant_id": tenant_id,
+        "message": message,
+    }
+    if model:
+        payload["model"] = model
+
+    start = time.time()
+    try:
+        resp = requests.post(
+            f"{base_url}/invocations",
+            json=payload,
+            timeout=300,
+        )
+        duration_ms = int((time.time() - start) * 1000)
+
+        if resp.status_code == 200:
+            logger.info(
+                "Local container invocation tenant_id=%s duration_ms=%d status=success",
+                tenant_id, duration_ms,
+            )
+            return resp.json()
+        else:
+            logger.error(
+                "Local container invocation failed tenant_id=%s status=%d body=%s",
+                tenant_id, resp.status_code, resp.text[:200],
+            )
+            raise RuntimeError(f"Agent Container returned {resp.status_code}: {resp.text[:200]}")
+
+    except requests.exceptions.ConnectionError as e:
+        raise RuntimeError(f"Agent Container not reachable at {base_url}: {e}") from e
+
+
+def _invoke_agentcore(tenant_id: str, message: str, model: Optional[str]) -> dict:
+    """Call AgentCore Runtime API (production mode)."""
     payload = {
         "sessionId": tenant_id,
         "message": message,

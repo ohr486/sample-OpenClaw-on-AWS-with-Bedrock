@@ -238,20 +238,25 @@ WhatsApp 和 Telegram 支持语音消息 — OpenClaw 会转录并回复。
 
 适合大多数用户。固定成本，完全控制，24/7 可用。
 
-### 无服务器（AgentCore Runtime）— [README_AGENTCORE.md](README_AGENTCORE.md)
+### 多租户平台（AgentCore Runtime）— [README_AGENTCORE.md](README_AGENTCORE.md)
 
-> ⚠️ 开发中 — 需要自行构建 Docker 镜像。
+> ⚠️ 开发中 — 目标 2026 年 6 月 v1.0。[路线图 →](ROADMAP.md)
 
-多租户，按使用付费，自动扩展。适合波动性工作负载：
+将 OpenClaw 从单用户工具变成企业平台：每位员工一个 AI 助手，每个团队一个 AI 助手，每个部门一个 AI 助手 — 边界清晰，能力共享，集中治理。
 
-| | EC2 | AgentCore |
-|---|---|---|
-| 成本模式 | 固定 24/7 | 按调用付费 |
-| 扩展 | 手动 | 自动 |
-| 隔离 | 共享实例 | 每租户 microVM |
-| 典型成本 | $50/月 | $15-30/月 |
+| 能力 | 实现方式 |
+|------|---------|
+| 租户隔离 | 每用户独立 Firecracker microVM（AgentCore Runtime） |
+| 统一模型访问 | 一个 Bedrock 账户，按租户计量（约 $1-2/人/月） |
+| 共享 Skills + SaaS 密钥打包 | 安装一次，按租户授权，凭证不暴露 |
+| 定制化权限规则 | SSM 存储，热更新，Plan A + E 双层防御 |
+| 受控信息共享 | 跨租户数据策略，审计，显式授权 |
+| 人工审批流程 | Auth Agent → 管理员消息通知 → 批准/拒绝 |
+| 弹性计算 | 自动扩展 microVM，按需突发，按使用付费 |
 
-**[→ AgentCore 指南](README_AGENTCORE.md)**
+**本地 Demo**：`python3 demo/console.py` → 打开 http://localhost:8099 查看管理控制台
+
+**[→ 多租户完整文档](README_AGENTCORE.md)** · **[→ 路线图](ROADMAP.md)**
 
 ### macOS（Apple Silicon）— iOS/macOS 开发
 
@@ -333,11 +338,16 @@ openclaw gateway status
 
 ## 贡献
 
-1. Fork 仓库
-2. 创建 feature 分支
-3. 提交 Pull Request
+我们正在开放构建企业级 OpenClaw 平台 — 从单用户部署到多租户 SaaS。无论你是企业架构师、技能开发者、安全研究员，还是想要更好 AI 助手的用户，都欢迎参与。
 
-详见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+当前最需要帮助的方向：
+- 端到端多租户集成测试
+- 带 SaaS 凭证打包的 Skills（Jira、Salesforce、SAP）
+- Agent 间编排协议
+- 成本对比测试（AgentCore vs EC2）
+- 安全审计和渗透测试
+
+**[→ 路线图](ROADMAP.md)** · **[→ 贡献指南](CONTRIBUTING.md)** · **[→ GitHub Issues](https://github.com/aws-samples/sample-OpenClaw-on-AWS-with-Bedrock/issues)**
 
 ## 资源
 
