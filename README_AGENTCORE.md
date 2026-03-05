@@ -223,7 +223,7 @@ STACK_NAME=openclaw-multitenancy REGION=us-east-1 bash setup-enterprise-profiles
 
 ```bash
 git clone <repo-url>
-cd sample-Moltbot-on-AWS-with-Bedrock
+cd sample-OpenClaw-on-AWS-with-Bedrock
 
 aws cloudformation create-stack \
   --stack-name openclaw-multitenancy \
