@@ -23,8 +23,20 @@ RUN if [ "$TARGETARCH" = "arm64" ] || [ "$(uname -m)" = "aarch64" ]; then \
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y nodejs && rm -rf /var/lib/apt/lists/*
 
-# Install OpenClaw globally via npm
-RUN npm install -g openclaw@latest
+# Install OpenClaw and ClawHub CLI globally via npm
+RUN npm install -g openclaw@latest clawhub@latest
+
+# Install enterprise built-in skills (Layer 1)
+# These are available to all tenants with zero cold-start overhead.
+# To customize: override SKILLS_PREINSTALL at build time.
+ARG SKILLS_PREINSTALL="jina-reader deep-research-pro transcript"
+RUN HOME=/root && mkdir -p /root/.openclaw && \
+    for skill in $SKILLS_PREINSTALL; do \
+      for attempt in 1 2 3; do \
+        clawhub install "$skill" --no-input --force && break; \
+        echo "Retry $attempt for $skill..."; sleep 5; \
+      done; \
+    done; echo "Built-in skills installed: $SKILLS_PREINSTALL"
 
 # Find and copy templates so OpenClaw can find them from any cwd
 RUN mkdir -p /app/docs/reference && \
@@ -66,6 +78,10 @@ COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/pytho
 COPY --from=builder /app/.compile-cache /app/.compile-cache
 COPY --from=builder /app/docs/reference /app/docs/reference
 
+# Copy built-in skills from builder (Layer 1)
+# clawhub installs to /root/.openclaw/skills/ and /skills/
+COPY --from=builder /root/.openclaw/skills /root/.openclaw/skills
+
 WORKDIR /app
 
 # Copy Agent Container application files
@@ -77,6 +93,7 @@ COPY agent-container/identity.py .
 COPY agent-container/memory.py .
 COPY agent-container/observability.py .
 COPY agent-container/safety.py .
+COPY agent-container/skill_loader.py .
 
 # Copy auth-agent module
 RUN mkdir -p /app/auth-agent

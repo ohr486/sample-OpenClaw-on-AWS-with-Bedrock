@@ -118,6 +118,23 @@ def _invoke_openclaw_once(tenant_id: str, message: str, timeout: int = 300) -> d
     Runs as 'ubuntu' user if we're root (EC2 host) so openclaw config is accessible.
     """
     env = os.environ.copy()
+
+    # Inject skill API keys from /tmp/skill_env.sh (written by skill_loader.py)
+    skill_env_file = "/tmp/skill_env.sh"
+    if os.path.isfile(skill_env_file):
+        try:
+            with open(skill_env_file) as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith("export ") and "=" in line:
+                        kv = line[7:]  # strip "export "
+                        key, _, val = kv.partition("=")
+                        # Strip surrounding quotes
+                        val = val.strip("'\"")
+                        env[key] = val
+        except IOError:
+            pass
+
     # Ensure node is on PATH for nvm installs
     nvm_bin = "/home/ubuntu/.nvm/versions/node/v22.22.1/bin"
     if os.path.isdir(nvm_bin):

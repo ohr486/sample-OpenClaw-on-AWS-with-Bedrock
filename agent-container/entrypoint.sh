@@ -61,7 +61,6 @@ echo "[entrypoint] server.py PID=${SERVER_PID}"
 (
     echo "[bg] Pulling workspace from S3..."
     aws s3 sync "${S3_BASE}/workspace/" "$WORKSPACE/" --quiet 2>/dev/null || true
-    aws s3 sync "s3://${S3_BUCKET}/_shared/skills/" "$WORKSPACE/skills/_shared/" --quiet 2>/dev/null || true
 
     # Initialize SOUL.md for new tenants
     if [ ! -f "$WORKSPACE/SOUL.md" ]; then
@@ -72,7 +71,25 @@ echo "[entrypoint] server.py PID=${SERVER_PID}"
             --quiet 2>/dev/null || echo "You are a helpful AI assistant." > "$WORKSPACE/SOUL.md"
     fi
 
-    echo "[bg] Workspace ready"
+    # =========================================================================
+    # Skill Loader: Layer 2 (S3 hot-load) + Layer 3 (pre-built bundles)
+    # Layer 1 (built-in) is already in the Docker image at ~/.openclaw/skills/
+    # =========================================================================
+    echo "[bg] Loading enterprise skills..."
+    python /app/skill_loader.py \
+        --tenant "$TENANT_ID" \
+        --workspace "$WORKSPACE" \
+        --bucket "$S3_BUCKET" \
+        --stack "$STACK_NAME" \
+        --region "$AWS_REGION" 2>&1 || echo "[bg] skill_loader.py failed (non-fatal)"
+
+    # Source skill API keys into environment (for subsequent openclaw invocations)
+    if [ -f /tmp/skill_env.sh ]; then
+        . /tmp/skill_env.sh
+        echo "[bg] Skill API keys loaded"
+    fi
+
+    echo "[bg] Workspace + skills ready"
     echo "WORKSPACE_READY" > /tmp/workspace_status
 
     # Watchdog: sync back every SYNC_INTERVAL seconds
