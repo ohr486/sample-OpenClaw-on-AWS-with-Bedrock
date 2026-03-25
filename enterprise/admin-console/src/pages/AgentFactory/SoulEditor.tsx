@@ -58,6 +58,16 @@ export default function SoulEditor() {
 
   const saveSoul = useSaveSoul();
 
+  const [showMergedPreview, setShowMergedPreview] = useState(false);
+
+  const mergedSoulText = useMemo(() => {
+    const parts = [];
+    if (globalContent.trim()) parts.push(`<!-- LAYER: GLOBAL (locked by IT) -->\n\n**CRITICAL IDENTITY OVERRIDE: You are a digital employee of ACME Corp.**\n\n${globalContent.trim()}`);
+    if (positionContent.trim()) parts.push(`<!-- LAYER: POSITION -->\n${positionContent.trim()}`);
+    if (personalContent.trim()) parts.push(`<!-- LAYER: PERSONAL -->\n${personalContent.trim()}`);
+    return parts.join('\n\n---\n\n') || 'No content to merge.';
+  }, [globalContent, positionContent, personalContent]);
+
   const handleSave = () => {
     if (!agentId) return;
     const layer = activeTab === 'global' ? 'global' : activeTab;
@@ -75,6 +85,7 @@ export default function SoulEditor() {
         actions={
           <div className="flex gap-3">
             <Button variant="default" onClick={() => navigate('/agents')}><ArrowLeft size={16} /> Back</Button>
+            <Button variant="default" onClick={() => setShowMergedPreview(!showMergedPreview)}><Eye size={16} /> {showMergedPreview ? 'Hide Preview' : 'Preview Merged'}</Button>
             <Button variant="primary" onClick={handleSave}><Save size={16} /> {saved ? '✓ Saved' : 'Save'}</Button>
           </div>
         }
@@ -196,6 +207,27 @@ export default function SoulEditor() {
           </Card>
         </div>
       </div>
+
+      {/* Merged SOUL Preview */}
+      {showMergedPreview && (
+        <Card className="mt-6">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-lg font-semibold text-text-primary flex items-center gap-2">
+              <Eye size={18} /> Merged SOUL.md Preview
+            </h3>
+            <div className="flex items-center gap-2 text-xs text-text-muted">
+              <span>{mergedSoulText.length} chars</span>
+              <span>·</span>
+              <span>{mergedSoulText.split(/\s+/).filter(Boolean).length} words</span>
+              <span>·</span>
+              <span>This is what OpenClaw reads at session start</span>
+            </div>
+          </div>
+          <pre className="rounded-lg bg-dark-bg border border-primary/20 p-4 text-sm text-text-secondary whitespace-pre-wrap font-mono leading-relaxed max-h-[500px] overflow-y-auto">
+            {mergedSoulText}
+          </pre>
+        </Card>
+      )}
     </div>
   );
 }

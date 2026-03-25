@@ -33,7 +33,7 @@ export default function PortalChat() {
   const [messages, setMessages] = useState<Message[]>(() => {
     const saved = loadMessages(userId);
     if (saved.length > 0) return saved;
-    return [{ id: 0, role: 'assistant', content: `Hello ${user?.name || 'there'}! I'm your AI assistant. How can I help you today?`, timestamp: new Date().toISOString() }];
+    return [{ id: 0, role: 'assistant', content: `Hello ${user?.name || 'there'}! I'm your **${user?.positionName || 'AI'} Agent** at ACME Corp.\n\nI can help you with tasks related to your ${user?.positionName || ''} role in the ${user?.departmentName || ''} department. Just type your question or request below.`, timestamp: new Date().toISOString() }];
   });
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
@@ -92,10 +92,10 @@ export default function PortalChat() {
       {/* Header */}
       <div className="flex items-center justify-between border-b border-dark-border px-6 py-3">
         <div className="flex items-center gap-3">
-          <ClawForgeLogo size={36} animate="idle" />
+          <ClawForgeLogo size={36} animate={sending ? 'working' : 'idle'} />
           <div>
-            <h1 className="text-sm font-semibold text-text-primary">AI Assistant</h1>
-            <p className="text-xs text-text-muted">{user?.positionName} · {user?.departmentName}</p>
+            <h1 className="text-sm font-semibold text-text-primary">{user?.positionName} Agent</h1>
+            <p className="text-xs text-text-muted">{user?.name} · {user?.departmentName}</p>
           </div>
         </div>
         <div className="flex items-center gap-3">

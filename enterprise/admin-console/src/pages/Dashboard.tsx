@@ -7,7 +7,7 @@ import {
   DollarSign, Clock, AlertTriangle,
 } from 'lucide-react';
 import { Card, StatCard, Badge, Button, PageHeader } from '../components/ui';
-import { useDepartments, usePositions, useEmployees, useAgents, useSessions, useAuditEntries, useBindings, useUsageSummary, useUsageTrend } from '../hooks/useApi';
+import { useDepartments, usePositions, useEmployees, useAgents, useSessions, useAuditEntries, useBindings, useUsageSummary, useUsageTrend, useApprovals, useAlertRules } from '../hooks/useApi';
 import { CHANNEL_LABELS } from '../types';
 import type { ChannelType } from '../types';
 
@@ -64,9 +64,14 @@ export default function Dashboard() {
   const { data: BINDINGS = [] } = useBindings();
   const { data: usageSummary } = useUsageSummary();
   const { data: trend = [] } = useUsageTrend();
+  const { data: approvalsData } = useApprovals();
+  const { data: alertRules = [] } = useAlertRules();
 
   const activeAgents = AGENTS.filter(a => a.status === 'active').length;
   const activeBindings = BINDINGS.filter(b => b.status === 'active').length;
+  const unboundEmployees = EMPLOYEES.filter(e => !e.agentId);
+  const pendingApprovals = approvalsData?.pending?.length || 0;
+  const activeAlerts = alertRules.filter(a => a.status === 'warning').length;
   const topDepts = DEPARTMENTS.filter(d => !d.parentId);
   const avgQuality = AGENTS.filter(a => a.qualityScore).reduce((s, a) => s + (a.qualityScore || 0), 0) / AGENTS.filter(a => a.qualityScore).length;
 
@@ -161,8 +166,37 @@ export default function Dashboard() {
           </div>
         </Card>
 
-        {/* Right column: Quick Actions + Agent Health */}
+        {/* Right column: Needs Attention + Quick Actions + Agent Health */}
         <div className="space-y-6">
+          {/* Needs Attention */}
+          {(pendingApprovals > 0 || unboundEmployees.length > 0 || activeAlerts > 0) && (
+            <Card>
+              <h3 className="mb-3 text-lg font-semibold text-text-primary flex items-center gap-2">
+                <AlertTriangle size={18} className="text-amber-400" /> Needs Attention
+              </h3>
+              <div className="space-y-2">
+                {pendingApprovals > 0 && (
+                  <div className="flex items-center justify-between rounded-lg bg-amber-500/5 border border-amber-500/20 px-3 py-2 cursor-pointer hover:bg-amber-500/10 transition-colors" onClick={() => navigate('/approvals')}>
+                    <span className="text-sm">{pendingApprovals} pending approval{pendingApprovals > 1 ? 's' : ''}</span>
+                    <Badge color="warning">Review</Badge>
+                  </div>
+                )}
+                {unboundEmployees.length > 0 && (
+                  <div className="flex items-center justify-between rounded-lg bg-blue-500/5 border border-blue-500/20 px-3 py-2 cursor-pointer hover:bg-blue-500/10 transition-colors" onClick={() => navigate('/bindings')}>
+                    <span className="text-sm">{unboundEmployees.length} employee{unboundEmployees.length > 1 ? 's' : ''} without agents</span>
+                    <Badge color="info">Provision</Badge>
+                  </div>
+                )}
+                {activeAlerts > 0 && (
+                  <div className="flex items-center justify-between rounded-lg bg-red-500/5 border border-red-500/20 px-3 py-2 cursor-pointer hover:bg-red-500/10 transition-colors" onClick={() => navigate('/monitor')}>
+                    <span className="text-sm">{activeAlerts} active alert{activeAlerts > 1 ? 's' : ''}</span>
+                    <Badge color="danger">Investigate</Badge>
+                  </div>
+                )}
+              </div>
+            </Card>
+          )}
+
           {/* Quick Actions */}
           <Card>
             <h3 className="mb-4 text-lg font-semibold text-text-primary">Quick Actions</h3>

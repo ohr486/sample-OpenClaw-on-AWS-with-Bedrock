@@ -128,8 +128,8 @@ export default function Bindings() {
               <div className="flex items-center justify-between mb-4">
                 <p className="text-sm text-text-secondary">Map IM platform user IDs to employee IDs. This tells the system which employee is behind each Discord/Telegram/Slack/WhatsApp account.</p>
                 <div className="flex gap-2">
-                  <Button variant="default" onClick={() => setShowPairing(true)}>🔑 Approve Pairing</Button>
-                  <Button variant="primary" onClick={() => setShowMapping(true)}><Smartphone size={14} className="mr-1" /> Add Mapping</Button>
+                  <Button variant="primary" onClick={() => setShowPairing(true)}>🔑 Approve Pairing</Button>
+                  <Button variant="default" onClick={() => setShowMapping(true)}><Smartphone size={14} className="mr-1" /> Manual Mapping</Button>
                 </div>
               </div>
               {userMappings.length === 0 ? (
