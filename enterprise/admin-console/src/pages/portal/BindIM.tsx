@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { CheckCircle, Loader2, RefreshCw, Link2, ExternalLink, Clock, AlertCircle } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { CheckCircle, Loader2, RefreshCw, Link2, ExternalLink, Clock, AlertCircle, UserPlus } from 'lucide-react';
 import { Card, Badge, Button } from '../../components/ui';
 import { api } from '../../api/client';
 import { IM_ICONS } from '../../components/IMIcons';
@@ -24,7 +24,7 @@ const CHANNELS: Channel[] = [
   { id: 'wechat', label: 'WeChat', icon: '', description: 'Personal messaging — not recommended for enterprise use', available: false, note: 'not-enterprise' },
 ];
 
-type StepState = 'idle' | 'loading' | 'waiting' | 'done' | 'error' | 'expired';
+type StepState = 'idle' | 'feishu-prereq' | 'loading' | 'waiting' | 'done' | 'error' | 'expired';
 
 interface PairSession {
   token: string;
@@ -92,8 +92,35 @@ function ChannelWizard({ channel, onDone, onCancel }: { channel: Channel; onDone
         <h3 className="text-base font-semibold text-text-primary">{channel.label}</h3>
         <p className="text-sm text-text-muted mt-1">{channel.description}</p>
       </div>
-      <Button variant="primary" className="w-full" onClick={startPairing}>
+      <Button variant="primary" className="w-full"
+        onClick={() => channel.id === 'feishu' ? setState('feishu-prereq') : startPairing()}>
         <Link2 size={16} /> Generate Connection Link
+      </Button>
+      <Button variant="ghost" className="w-full" onClick={onCancel}>Back</Button>
+    </div>
+  );
+
+  if (state === 'feishu-prereq') return (
+    <div className="space-y-4">
+      <div className="rounded-xl bg-warning/10 border border-warning/30 p-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <UserPlus size={18} className="text-warning flex-shrink-0" />
+          <h3 className="text-sm font-semibold text-text-primary">Join the Company Feishu First</h3>
+        </div>
+        <p className="text-xs text-text-secondary leading-relaxed">
+          The enterprise bot is only accessible to members of the ACME Corp Feishu organization.
+          If you haven't joined yet, please contact your IT Admin to receive an invite link.
+        </p>
+        <div className="rounded-lg bg-dark-bg border border-dark-border/50 px-3 py-2.5 flex items-center gap-2">
+          <span className="text-xs text-text-muted">Need access?</span>
+          <span className="text-xs font-medium text-primary">Contact IT Admin to join the company Feishu</span>
+        </div>
+      </div>
+      <div className="rounded-xl bg-info/5 border border-info/20 p-3 text-xs text-info">
+        Already a member? Tap below to generate your connection link.
+      </div>
+      <Button variant="primary" className="w-full" onClick={startPairing}>
+        <Link2 size={16} /> I'm in — Generate Connection Link
       </Button>
       <Button variant="ghost" className="w-full" onClick={onCancel}>Back</Button>
     </div>
@@ -247,18 +274,34 @@ export default function BindIM() {
   const [connected, setConnected] = useState<string[]>([]);
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
   const [confirmDisconnect, setConfirmDisconnect] = useState<string | null>(null);
+  const connectedRef = useRef<string[]>([]);
 
-  // Check existing connections
-  useEffect(() => {
+  const fetchChannels = useCallback(() => {
     api.get<any>('/portal/channels').then(d => {
-      if (d?.connected) setConnected(d.connected);
+      if (d?.connected) {
+        connectedRef.current = d.connected;
+        setConnected(d.connected);
+      }
     }).catch(() => {});
   }, []);
+
+  // Initial fetch
+  useEffect(() => { fetchChannels(); }, [fetchChannels]);
+
+  // Background poll every 5s when wizard is open — detects completion even if
+  // the wizard's own polling misses the event (e.g. user switched tabs)
+  useEffect(() => {
+    if (!selected) return;
+    const t = setInterval(fetchChannels, 5000);
+    return () => clearInterval(t);
+  }, [selected, fetchChannels]);
 
   const handleDone = useCallback((channelId: string) => {
     setConnected(prev => [...prev.filter(c => c !== channelId), channelId]);
     setSelected(null);
-  }, []);
+    // Re-fetch to confirm server-side status
+    setTimeout(fetchChannels, 500);
+  }, [fetchChannels]);
 
   const handleDisconnect = useCallback(async (channelId: string) => {
     setDisconnecting(channelId);
