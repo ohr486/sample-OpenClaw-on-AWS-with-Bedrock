@@ -674,6 +674,101 @@ function LLMProviderTab({ positions }: { positions: any[] }) {
   );
 }
 
+// ─── Position Runtime Table ───────────────────────────────────────────────────
+
+function rtLabel(rt: any): string {
+  const name: string = rt?.name || rt?.id || '';
+  if (name.toLowerCase().includes('exec')) return 'Executive Runtime';
+  if (name.toLowerCase().includes('standard') || name.includes('runtime-ol')) return 'Standard Runtime';
+  return name.replace(/^openclaw_\w+_/, '').replace(/_runtime.*/, ' Runtime');
+}
+
+function PositionRuntimeRow({ pos, assignedId, runtimes, runtimeOptions, onAssign, onRemove, saving }: {
+  pos: any; assignedId: string; runtimes: any[]; runtimeOptions: { label: string; value: string }[];
+  onAssign: (runtimeId: string) => void; onRemove: () => void; saving: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [pendingId, setPendingId] = useState('');
+  const [saved, setSaved] = useState(false);
+  const assignedRt = runtimes.find(r => r.id === assignedId);
+  const isExec = assignedRt?.containerUri?.includes('exec') || assignedRt?.name?.toLowerCase().includes('exec');
+
+  const handleSave = () => {
+    if (!pendingId || pendingId === assignedId) { setEditing(false); return; }
+    onAssign(pendingId);
+    setEditing(false);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2500);
+  };
+
+  return (
+    <div className="flex items-center gap-3 rounded-xl bg-surface-dim px-4 py-3">
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-text-primary">{pos.name}</p>
+        <p className="text-xs text-text-muted">{pos.departmentName}</p>
+      </div>
+
+      {editing ? (
+        <div className="flex items-center gap-2 shrink-0">
+          <select
+            value={pendingId || assignedId}
+            onChange={e => setPendingId(e.target.value)}
+            className="rounded-xl border border-primary/40 bg-dark-bg px-3 py-1.5 text-sm text-text-primary focus:outline-none focus:border-primary"
+          >
+            <option value="">— Default (Standard) —</option>
+            {runtimeOptions.map(o => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+          <Button size="sm" variant="primary" disabled={saving} onClick={handleSave}>
+            {saving ? <RefreshCw size={12} className="animate-spin" /> : <Save size={12} />} Save
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => { setEditing(false); setPendingId(''); }}>
+            <X size={12} />
+          </Button>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 shrink-0">
+          {saved && <span className="text-[10px] text-success flex items-center gap-1"><CheckCircle size={12} /> Saved</span>}
+          {assignedRt ? (
+            <Badge color={isExec ? 'warning' : 'info'}>{rtLabel(assignedRt)}</Badge>
+          ) : (
+            <Badge color="default">Default (Standard)</Badge>
+          )}
+          <Button size="sm" variant="ghost" onClick={() => { setEditing(true); setPendingId(assignedId); }}>
+            <Edit3 size={12} /> Change
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PositionRuntimeTable({ positions, runtimes, runtimeMap, runtimeOptions, onAssign, onRemove, saving }: {
+  positions: any[]; runtimes: any[]; runtimeMap: Record<string, string>;
+  runtimeOptions: { label: string; value: string }[];
+  onAssign: (posId: string, runtimeId: string) => void;
+  onRemove: (posId: string) => void;
+  saving: boolean;
+}) {
+  return (
+    <div className="space-y-2">
+      {positions.map(pos => (
+        <PositionRuntimeRow
+          key={pos.id}
+          pos={pos}
+          assignedId={runtimeMap[pos.id] || ''}
+          runtimes={runtimes}
+          runtimeOptions={runtimeOptions.map(o => ({ ...o, label: rtLabel(runtimes.find(r => r.id === o.value) || { name: o.label }) }))}
+          onAssign={(rid) => onAssign(pos.id, rid)}
+          onRemove={() => onRemove(pos.id)}
+          saving={saving}
+        />
+      ))}
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function SecurityCenter() {
@@ -779,57 +874,27 @@ export default function SecurityCenter() {
 
             {/* ── Position → Runtime Mapping Table ── */}
             <Card>
-              <div className="flex items-center gap-2 mb-4">
-                <ChevronRight size={18} className="text-primary" />
+              <div className="flex items-center justify-between mb-4">
                 <div>
                   <h3 className="text-sm font-semibold text-text-primary">Position → Runtime Assignments</h3>
                   <p className="text-xs text-text-muted">
-                    Assign a runtime to each position. All employees in that position will route to it.
-                    Employee-level overrides take precedence. Falls back to Standard Runtime if unset.
+                    Each position routes to its assigned runtime. Employee-level override takes precedence.
+                    Changes propagate to all employees in the position via SSM.
                   </p>
                 </div>
+                {mapLoading && <RefreshCw size={14} className="animate-spin text-text-muted" />}
               </div>
-              {mapLoading || rtLoading ? (
-                <div className="flex justify-center py-6"><RefreshCw size={16} className="animate-spin text-text-muted" /></div>
-              ) : (
-                <div className="space-y-2">
-                  {positions.map(pos => {
-                    const assignedId = runtimeMap[pos.id] || '';
-                    const assignedRt = runtimes.find(r => r.id === assignedId);
-                    const isExecRuntime = assignedRt?.containerUri?.includes('exec') || assignedRt?.name?.toLowerCase().includes('exec');
-                    return (
-                      <div key={pos.id} className="flex items-center gap-3 rounded-xl bg-surface-dim px-4 py-3">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-text-primary">{pos.name}</p>
-                          <p className="text-xs text-text-muted">{pos.departmentName}</p>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          {assignedRt ? (
-                            <>
-                              <Badge color={isExecRuntime ? 'warning' : 'info'}>{assignedRt.name || assignedId.slice(-8)}</Badge>
-                              <Button size="sm" variant="ghost" className="text-danger hover:text-danger"
-                                onClick={() => deletePositionRuntime.mutate(pos.id)}>
-                                <X size={12} />
-                              </Button>
-                            </>
-                          ) : (
-                            <Badge color="default">Default (Standard)</Badge>
-                          )}
-                          <div className="w-52">
-                            <Select label="" value={assignedId}
-                              onChange={val => val && setPositionRuntime.mutate({ posId: pos.id, runtimeId: val })}
-                              options={runtimeOptions}
-                              placeholder="Assign runtime…"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+              <PositionRuntimeTable
+                positions={positions}
+                runtimes={runtimes}
+                runtimeMap={runtimeMap}
+                runtimeOptions={runtimeOptions}
+                onAssign={(posId, runtimeId) => setPositionRuntime.mutate({ posId, runtimeId })}
+                onRemove={(posId) => deletePositionRuntime.mutate(posId)}
+                saving={setPositionRuntime.isPending}
+              />
               <div className="mt-3 rounded-xl bg-info/5 border border-info/20 px-3 py-2 text-xs text-info">
-                Changing a position's runtime propagates to all employees in that position via SSM and takes effect on the next agent cold start.
+                Takes effect on the next agent cold start (~15 min idle). Currently active microVMs are not affected.
               </div>
             </Card>
           </div>

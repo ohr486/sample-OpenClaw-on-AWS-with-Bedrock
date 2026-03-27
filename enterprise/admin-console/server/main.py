@@ -365,7 +365,7 @@ def _get_active_agent_ids() -> set:
         cw = _boto3.client("logs", region_name="us-east-1")
         start_time = int((_t.time() - 900) * 1000)  # 15 min ago
         active_ids = set()
-        for lg in _LOG_GROUPS:
+        for lg in _get_all_agentcore_log_groups():
             try:
                 resp = cw.filter_log_events(
                     logGroupName=lg, startTime=start_time,
@@ -2113,8 +2113,21 @@ from botocore.exceptions import ClientError as _ClientError
 # Log groups to query (AgentCore runtime + custom agent logs)
 _LOG_GROUPS = [
     "/aws/bedrock-agentcore/runtimes/openclaw_multitenancy_runtime-olT3WX54rJ-DEFAULT",
+    "/aws/bedrock-agentcore/runtimes/openclaw_multitenancy_exec_runtime-OkWZBw3ybK-DEFAULT",
     "/openclaw/openclaw-multitenancy/agents",
 ]
+
+def _get_all_agentcore_log_groups() -> list:
+    """Dynamically discover all AgentCore runtime log groups.
+    Caches for 5 minutes so new runtimes are picked up automatically."""
+    try:
+        cw = _boto3.client("logs", region_name="us-east-1")
+        resp = cw.describe_log_groups(logGroupNamePrefix="/aws/bedrock-agentcore/runtimes/")
+        groups = [g["logGroupName"] for g in resp.get("logGroups", [])]
+        extra = ["/openclaw/openclaw-multitenancy/agents"]
+        return groups + [g for g in extra if g not in groups]
+    except Exception:
+        return _LOG_GROUPS
 
 def _query_cloudwatch_sessions(region: str, minutes: int = 30) -> list:
     """Query CloudWatch Logs for recent agent invocations to derive active sessions."""
@@ -2124,7 +2137,7 @@ def _query_cloudwatch_sessions(region: str, minutes: int = 30) -> list:
         start_time = int((_time.time() - minutes * 60) * 1000)
         sessions = []
 
-        for log_group in _LOG_GROUPS:
+        for log_group in _get_all_agentcore_log_groups():
             try:
                 resp = cw.filter_log_events(
                     logGroupName=log_group,
@@ -2359,7 +2372,7 @@ def get_runtime_events(minutes: int = 30):
         start_time = int((_time.time() - minutes * 60) * 1000)
         events = []
 
-        for log_group in _LOG_GROUPS:
+        for log_group in _get_all_agentcore_log_groups():
             try:
                 # Get all recent log events
                 resp = cw.filter_log_events(
