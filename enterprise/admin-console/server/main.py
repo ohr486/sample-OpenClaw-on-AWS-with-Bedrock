@@ -2440,6 +2440,35 @@ def get_runtime_events(minutes: int = 30):
             if t:
                 active_tenants.add(t)
 
+        # If CloudWatch returned nothing, supplement with DynamoDB audit log entries
+        if not events:
+            try:
+                audit = db.get_audit_entries(limit=200)
+                cutoff = datetime.now(timezone.utc).timestamp() - minutes * 60
+                for a in audit:
+                    ts = a.get("timestamp", "")
+                    try:
+                        entry_time = datetime.fromisoformat(ts.replace("Z", "+00:00")).timestamp()
+                    except Exception:
+                        continue
+                    if entry_time < cutoff:
+                        continue
+                    if a.get("eventType") == "agent_invocation":
+                        events.append({
+                            "type": "invocation",
+                            "message": f"Agent invocation — {a.get('actorName', '?')}",
+                            "tenant": a.get("actorId", ""),
+                            "timestamp": ts,
+                            "raw": a.get("detail", "")[:200],
+                            "source": "audit_log",
+                        })
+                if events:
+                    events.sort(key=lambda e: e["timestamp"], reverse=True)
+                    invocations = [e for e in events if e["type"] == "invocation"]
+                    active_tenants = {e.get("tenant", "") for e in invocations if e.get("tenant")}
+            except Exception:
+                pass
+
         return {
             "events": events[:100],  # cap at 100
             "summary": {
