@@ -302,6 +302,110 @@ All non-public information disclosed by either party, including but not limited 
 - 🔴 Red: NPS < 6, declining usage, critical tickets open
 """),
     ],
+    "_shared/knowledge/org-directory/": [
+        ("company-directory.md", """# ACME Corp — Company Directory
+
+This is the official employee directory. Use it to find who to contact for any topic,
+draft introductions, or understand each person's role and AI agent capabilities.
+
+---
+
+## Engineering
+
+### 张三 (Zhang San) — Solutions Architect · Engineering
+- **Employee ID**: emp-z3  · **Employee No**: EMP-001
+- **Role**: Solutions Architect — pre-sales technical lead, architecture reviews, customer POCs
+- **Agent capabilities**: architecture diagrams, cost calculations, deep research, jina-reader, web search
+- **IM channels**: Telegram, Slack
+- **Best for**: AWS architecture questions, customer technical proposals, solution design reviews
+
+### 王五 (Wang Wu) — Software Engineer · Backend Team
+- **Employee ID**: emp-w5  · **Employee No**: EMP-004
+- **Role**: Backend Software Engineer — API design, microservices, code review
+- **Agent capabilities**: GitHub PR review, code analysis, deep research, shell commands
+- **IM channels**: Slack
+- **Best for**: Code reviews, backend architecture, debugging, technical implementation questions
+
+### JiaDe Wang — Solutions Architect · Engineering
+- **Employee ID**: emp-jiade  · **Employee No**: EMP-030
+- **Role**: Solutions Architect — enterprise AI solutions, AWS Bedrock, AgentCore deployments
+- **Agent capabilities**: architecture diagrams, cost calculations, deep research, jina-reader
+- **IM channels**: Discord, Slack
+- **Best for**: Enterprise AI architecture, Bedrock/AgentCore questions, OpenClaw Enterprise demos
+
+### Peter Wu — Executive · Engineering
+- **Employee ID**: emp-peter  · **Employee No**: EMP-031
+- **Role**: Executive (Engineering leadership) — strategic decisions, cross-team coordination
+- **Agent capabilities**: web search, deep research, jina-reader, full tool access (no restrictions)
+- **IM channels**: Discord, Portal
+- **Best for**: Executive-level decisions, cross-department escalations, strategic planning
+
+---
+
+## Product
+
+### 林小雨 (Lin Xiaoyu) — Product Manager · Product
+- **Employee ID**: emp-lin  · **Employee No**: EMP-014
+- **Role**: Product Manager — product roadmap, requirements, feature prioritization
+- **Agent capabilities**: Jira queries, transcript analysis, deep research, jina-reader
+- **IM channels**: Feishu, Slack
+- **Best for**: Product requirements, roadmap questions, feature specs, user story discussions
+
+---
+
+## Finance
+
+### Carol Zhang — Finance Analyst · Finance
+- **Employee ID**: emp-carol  · **Employee No**: EMP-016
+- **Role**: Finance Analyst — budget tracking, financial reports, SAP ERP data
+- **Agent capabilities**: SAP connector (read-only), Excel report generation, financial analysis
+- **IM channels**: Slack, Telegram
+- **Best for**: Budget reports, financial data queries, Excel financial models, expense analysis
+
+### David Park — Finance Analyst · Finance
+- **Employee ID**: emp-david  · **Employee No**: EMP-017
+- **Role**: Finance Analyst — SAP ERP data, budget monitoring, Excel reports
+- **Agent capabilities**: SAP connector (read-only), Excel report generation, budget tracking
+- **IM channels**: Slack, Portal
+- **Best for**: Budget variance analysis, cost center reports, financial forecasting
+
+---
+
+## Administration
+
+### 张三 (Zhang San) — Admin · ACME Corp
+- **Employee ID**: emp-z3  · **Employee No**: EMP-001
+- **Role**: System Administrator with full Admin Console access
+- **Best for**: IT support requests, permission changes, system configuration
+
+---
+
+## How to Reach Anyone
+
+1. **Via AI agent**: Each employee has an AI agent that handles routine requests on their behalf.
+   Ask their agent via any connected IM channel (Discord, Telegram, Feishu, Slack, Portal).
+
+2. **For urgent matters**: Contact directly via their IM channel listed above.
+
+3. **Cross-team requests**: Describe your need — the agent will identify the right person and draft
+   an introduction message or request for you.
+
+---
+
+## Department Structure
+
+| Department | Head | Key Contacts |
+|------------|------|-------------|
+| Engineering | Peter Wu (exec-peter) | JiaDe (SA), 张三 (SA), 王五 (SDE) |
+| Backend Team | (under Engineering) | 王五 (SDE) |
+| Product | 林小雨 | 林小雨 (PM) |
+| Finance | (CFO) | Carol Zhang, David Park |
+
+---
+
+*Last updated: 2026-03-28. Run `seed_knowledge_docs.py` to refresh after org changes.*
+"""),
+    ],
 }
 
 

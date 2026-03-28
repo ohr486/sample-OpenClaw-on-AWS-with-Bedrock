@@ -1182,6 +1182,7 @@ _KB_PREFIXES = {
     "kb-hr": {"prefix": "_shared/knowledge/hr-policies/", "scope": "department", "scopeName": "HR & Admin", "accessibleBy": "HR dept only"},
     "kb-legal": {"prefix": "_shared/knowledge/contract-templates/", "scope": "department", "scopeName": "Legal & Compliance", "accessibleBy": "Legal dept only"},
     "kb-customer": {"prefix": "_shared/knowledge/customer-playbooks/", "scope": "department", "scopeName": "Customer Success", "accessibleBy": "CS + Sales"},
+    "kb-org-directory": {"prefix": "_shared/knowledge/org-directory/", "scope": "global", "scopeName": "All Employees", "accessibleBy": "All employees"},
 }
 
 @app.get("/api/v1/knowledge")

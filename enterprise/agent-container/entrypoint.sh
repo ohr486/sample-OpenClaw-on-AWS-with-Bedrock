@@ -168,7 +168,7 @@ echo "[entrypoint] server.py PID=${SERVER_PID}"
                 --exclude "SOUL.md" --exclude "AGENTS.md" --exclude "TOOLS.md" --exclude "IDENTITY.md" \
                 --exclude ".personal_soul_backup.md" --exclude "knowledge/*" \
                 --size-only \
-                --region us-east-1 \
+                --region "$AWS_REGION" \
                 --quiet 2>/dev/null && echo "[watchdog] Synced to ${SYNC_TARGET}" || true
         fi
         
@@ -218,9 +218,9 @@ cleanup() {
 
         # Sync memory files without --size-only so all recent writes are captured
         aws s3 sync "$WORKSPACE/memory/" "${SYNC_TARGET}memory/" \
-            --region us-east-1 --quiet 2>/dev/null || true
+            --region "$AWS_REGION" --quiet 2>/dev/null || true
         aws s3 cp "$WORKSPACE/MEMORY.md" "${SYNC_TARGET}MEMORY.md" \
-            --region us-east-1 --quiet 2>/dev/null || true
+            --region "$AWS_REGION" --quiet 2>/dev/null || true
 
         # Sync everything else with size-only (skip large unchanged files)
         aws s3 sync "$WORKSPACE/" "$SYNC_TARGET" \
@@ -228,7 +228,7 @@ cleanup() {
             --exclude "SOUL.md" --exclude "AGENTS.md" --exclude "TOOLS.md" --exclude "IDENTITY.md" \
             --exclude ".personal_soul_backup.md" --exclude "knowledge/*" \
             --size-only \
-            --region us-east-1 \
+            --region "$AWS_REGION" \
             --quiet 2>/dev/null || true
 
         echo "[entrypoint] Workspace flushed to ${SYNC_TARGET}"

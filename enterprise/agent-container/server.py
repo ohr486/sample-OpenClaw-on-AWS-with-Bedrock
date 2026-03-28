@@ -570,6 +570,36 @@ def _ensure_workspace_assembled(tenant_id: str) -> None:
         except Exception as e:
             logger.warning("Dynamic agent config failed (non-fatal): %s", e)
 
+        # 6. Inject CHANNELS.md — user's connected IM channels for reminder delivery.
+        # OpenClaw's heartbeat (reminder) system needs to know which channel to use
+        # for outbound notifications. Reverse-lookup the user's channel bindings from SSM.
+        try:
+            import boto3 as _b3ch
+            ssm_ch = _b3ch.client("ssm", region_name=AWS_REGION_RUNTIME)
+            prefix = f"/openclaw/{STACK_NAME}/user-mapping/"
+            paginator = ssm_ch.get_paginator("get_parameters_by_path")
+            channel_lines = []
+            for page in paginator.paginate(Path=prefix, Recursive=True):
+                for p in page.get("Parameters", []):
+                    if p.get("Value") == base_id:
+                        mapping_key = p["Name"].replace(prefix, "")
+                        if "__" in mapping_key:
+                            ch, uid = mapping_key.split("__", 1)
+                            channel_lines.append(f"- **{ch}**: {uid}")
+            if channel_lines:
+                channels_md = (
+                    "# Notification Channels\n\n"
+                    "When sending reminders or proactive notifications, use these channels:\n\n"
+                    + "\n".join(channel_lines)
+                    + "\n\nPrefer the first available channel in the list above.\n"
+                    "For portal/webchat sessions, fall back to the IM channel listed here.\n"
+                )
+                with open(os.path.join(WORKSPACE, "CHANNELS.md"), "w") as f:
+                    f.write(channels_md)
+                logger.info("CHANNELS.md written for %s: %s", base_id, channel_lines)
+        except Exception as e:
+            logger.warning("CHANNELS.md injection failed (non-fatal): %s", e)
+
         _assembled_tenants.add(tenant_id)
         logger.info("Workspace ready for tenant %s", tenant_id)
 
@@ -612,6 +642,43 @@ def _audit_response(tenant_id: str, response_text: str, allowed_tools: list) -> 
                 request_id=None,
             )
             logger.warning("AUDIT: blocked tool '%s' in response tenant_id=%s", tool, tenant_id)
+
+
+def _sync_heartbeat_and_memory(base_id: str) -> None:
+    """Immediately sync HEARTBEAT.md and memory/*.md to S3 after each invocation.
+
+    AgentCore microVMs may receive SIGKILL (not SIGTERM) after returning a response,
+    which bypasses entrypoint.sh cleanup(). This function ensures reminders and per-turn
+    memory reach S3 so the next session can load them — even if the microVM is killed
+    immediately after.
+    """
+    if not base_id or base_id == "unknown":
+        return
+    sync_target = f"s3://{S3_BUCKET}/{base_id}/workspace/"
+    try:
+        # Sync memory directory (daily checkpoint files written by _append_conversation_turn)
+        subprocess.run(
+            ["aws", "s3", "sync", os.path.join(WORKSPACE, "memory") + "/",
+             f"{sync_target}memory/", "--quiet"],
+            capture_output=True, text=True, timeout=15,
+        )
+        # Copy HEARTBEAT.md if it exists (created by OpenClaw when user sets a reminder)
+        heartbeat_path = os.path.join(WORKSPACE, "HEARTBEAT.md")
+        if os.path.isfile(heartbeat_path):
+            subprocess.run(
+                ["aws", "s3", "cp", heartbeat_path, f"{sync_target}HEARTBEAT.md", "--quiet"],
+                capture_output=True, text=True, timeout=10,
+            )
+            logger.info("HEARTBEAT.md synced to S3 for %s", base_id)
+        # Copy MEMORY.md if it exists (updated by Gateway compaction)
+        memory_md_path = os.path.join(WORKSPACE, "MEMORY.md")
+        if os.path.isfile(memory_md_path):
+            subprocess.run(
+                ["aws", "s3", "cp", memory_md_path, f"{sync_target}MEMORY.md", "--quiet"],
+                capture_output=True, text=True, timeout=10,
+            )
+    except Exception as e:
+        logger.warning("Post-invocation S3 sync failed (non-fatal): %s", e)
 
 
 def invoke_openclaw(tenant_id: str, message: str, timeout: int = 300, max_retries: int = 2) -> dict:
@@ -866,6 +933,16 @@ class AgentCoreHandler(BaseHTTPRequestHandler):
             threading.Thread(
                 target=_append_conversation_turn,
                 args=(tenant_id, message, response_text, model, duration_ms),
+                daemon=True,
+            ).start()
+
+            # Fire-and-forget: immediately sync HEARTBEAT.md + memory to S3 after each turn.
+            # AgentCore microVMs may be killed (SIGKILL) after the response without SIGTERM,
+            # bypassing the cleanup() flush. Syncing here ensures reminders and memory
+            # reach S3 regardless of how the microVM terminates.
+            threading.Thread(
+                target=_sync_heartbeat_and_memory,
+                args=(base_id,),
                 daemon=True,
             ).start()
 

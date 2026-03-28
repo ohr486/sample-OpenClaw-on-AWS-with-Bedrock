@@ -20,6 +20,7 @@ def seed(table_name, region):
         {"id": "kb-hr", "name": "HR Policies", "scope": "department", "scopeName": "HR & Admin", "docCount": 10, "vectorCount": 2800, "sizeMB": "6.2", "status": "indexed", "lastUpdated": "2026-03-14T00:00:00Z", "accessibleBy": "HR dept only", "s3Prefix": "_shared/knowledge/hr-policies/"},
         {"id": "kb-legal", "name": "Contract Templates", "scope": "department", "scopeName": "Legal & Compliance", "docCount": 18, "vectorCount": 5200, "sizeMB": "14.1", "status": "indexed", "lastUpdated": "2026-03-18T00:00:00Z", "accessibleBy": "Legal dept only", "s3Prefix": "_shared/knowledge/contract-templates/"},
         {"id": "kb-customer", "name": "Customer Playbooks", "scope": "department", "scopeName": "Customer Success", "docCount": 7, "vectorCount": 1900, "sizeMB": "4.8", "status": "indexed", "lastUpdated": "2026-03-17T00:00:00Z", "accessibleBy": "CS + Sales", "s3Prefix": "_shared/knowledge/customer-playbooks/"},
+        {"id": "kb-org-directory", "name": "Company Directory", "scope": "global", "scopeName": "All Employees", "docCount": 1, "vectorCount": 200, "sizeMB": "0.1", "status": "indexed", "lastUpdated": "2026-03-28T00:00:00Z", "accessibleBy": "All employees", "s3Prefix": "_shared/knowledge/org-directory/"},
     ]
 
     for kb in kbs:
