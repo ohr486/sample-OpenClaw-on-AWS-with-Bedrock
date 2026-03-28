@@ -43,8 +43,31 @@ fi
 # Node.js 22 Happy Eyeballs tries IPv6 first, times out in VPC without IPv6
 export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--dns-result-order=ipv4first"
 
-# Prepare workspace — use OpenClaw's default path so it reads SOUL.md correctly
-mkdir -p "$WORKSPACE" "$WORKSPACE/memory" "$WORKSPACE/skills"
+# EFS workspace detection:
+# If EFS is mounted at /mnt/efs (EFS_ENABLED env var set by task definition),
+# use /mnt/efs/{BASE_TENANT_ID}/workspace/ as the persistent workspace.
+# On first start (empty EFS dir), bootstrap from S3. No watchdog needed.
+EFS_MODE=false
+if [ "${EFS_ENABLED:-}" = "true" ] && [ -d "/mnt/efs" ]; then
+    EFS_WORKSPACE="/mnt/efs/${BASE_TENANT_ID}/workspace"
+    mkdir -p "$EFS_WORKSPACE" "$EFS_WORKSPACE/memory" "$EFS_WORKSPACE/skills"
+    WORKSPACE="$EFS_WORKSPACE"
+    export OPENCLAW_WORKSPACE="$WORKSPACE"
+    EFS_MODE=true
+    echo "[entrypoint] EFS mode: workspace=${WORKSPACE}"
+
+    # Bootstrap from S3 if this employee's EFS directory is empty (first start)
+    if [ -z "$(ls -A "$EFS_WORKSPACE" 2>/dev/null)" ]; then
+        echo "[entrypoint] EFS workspace empty — bootstrapping from S3..."
+        aws s3 sync "${S3_BASE}/workspace/" "$EFS_WORKSPACE/" \
+            --quiet --region "$AWS_REGION" 2>/dev/null || true
+        echo "[entrypoint] EFS bootstrap complete"
+    fi
+else
+    # Standard mode: use default workspace path, watchdog will sync to S3
+    mkdir -p "$WORKSPACE" "$WORKSPACE/memory" "$WORKSPACE/skills"
+fi
+
 # Symlink for backward compat (skill_loader, watchdog sync)
 ln -sfn "$WORKSPACE" /tmp/workspace
 echo "$TENANT_ID" > /tmp/tenant_id
@@ -155,32 +178,36 @@ echo "[entrypoint] server.py PID=${SERVER_PID}"
     echo "[bg] Workspace + skills ready"
     echo "WORKSPACE_READY" > /tmp/workspace_status
 
-    # Watchdog: sync back every SYNC_INTERVAL seconds
-    # This persists OpenClaw's runtime changes (MEMORY.md, memory/*.md) to S3
-    while true; do
-        sleep "$SYNC_INTERVAL"
-        # Re-read base tenant ID (may have been updated by server.py on first request)
-        CURRENT_BASE=$(cat /tmp/base_tenant_id 2>/dev/null || echo "$BASE_TENANT_ID")
-        if [ "$CURRENT_BASE" != "unknown" ] && [ -n "$CURRENT_BASE" ]; then
-            SYNC_TARGET="s3://${S3_BUCKET}/${CURRENT_BASE}/workspace/"
-            aws s3 sync "$WORKSPACE/" "$SYNC_TARGET" \
-                --exclude "node_modules/*" --exclude "skills/_shared/*" --exclude "skills/*" \
-                --exclude "SOUL.md" --exclude "AGENTS.md" --exclude "TOOLS.md" --exclude "IDENTITY.md" \
-                --exclude ".personal_soul_backup.md" --exclude "knowledge/*" \
-                --size-only \
-                --region "$AWS_REGION" \
-                --quiet 2>/dev/null && echo "[watchdog] Synced to ${SYNC_TARGET}" || true
-        fi
-        
-        # Also sync memory to team-level shared path if this is a shared agent
-        if [ -f "$WORKSPACE/.shared_agent" ]; then
-            SHARED_ID=$(cat "$WORKSPACE/.shared_agent")
-            aws s3 sync "$WORKSPACE/memory/" "s3://${S3_BUCKET}/_shared/memory/${SHARED_ID}/" \
-                --quiet 2>/dev/null || true
-            aws s3 cp "$WORKSPACE/MEMORY.md" "s3://${S3_BUCKET}/_shared/memory/${SHARED_ID}/MEMORY.md" \
-                --quiet 2>/dev/null || true
-        fi
-    done
+    # Watchdog: sync workspace back to S3
+    # EFS mode: EFS handles persistence — skip periodic S3 sync (zero API overhead)
+    # S3 mode: sync every SYNC_INTERVAL seconds
+    if [ "$EFS_MODE" = "true" ]; then
+        echo "[watchdog] EFS mode active — skipping S3 sync loop (writes durable on EFS)"
+        # Stay alive (entrypoint needs this subshell to keep running for SIGTERM to work)
+        while true; do sleep 3600; done
+    else
+        while true; do
+            sleep "$SYNC_INTERVAL"
+            CURRENT_BASE=$(cat /tmp/base_tenant_id 2>/dev/null || echo "$BASE_TENANT_ID")
+            if [ "$CURRENT_BASE" != "unknown" ] && [ -n "$CURRENT_BASE" ]; then
+                SYNC_TARGET="s3://${S3_BUCKET}/${CURRENT_BASE}/workspace/"
+                aws s3 sync "$WORKSPACE/" "$SYNC_TARGET" \
+                    --exclude "node_modules/*" --exclude "skills/_shared/*" --exclude "skills/*" \
+                    --exclude "SOUL.md" --exclude "AGENTS.md" --exclude "TOOLS.md" \
+                    --exclude "IDENTITY.md" --exclude ".personal_soul_backup.md" \
+                    --exclude "knowledge/*" \
+                    --size-only --region "$AWS_REGION" \
+                    --quiet 2>/dev/null && echo "[watchdog] Synced to ${SYNC_TARGET}" || true
+            fi
+            if [ -f "$WORKSPACE/.shared_agent" ]; then
+                SHARED_ID=$(cat "$WORKSPACE/.shared_agent")
+                aws s3 sync "$WORKSPACE/memory/" "s3://${S3_BUCKET}/_shared/memory/${SHARED_ID}/" \
+                    --quiet 2>/dev/null || true
+                aws s3 cp "$WORKSPACE/MEMORY.md" "s3://${S3_BUCKET}/_shared/memory/${SHARED_ID}/MEMORY.md" \
+                    --quiet 2>/dev/null || true
+            fi
+        done
+    fi
 ) &
 BG_PID=$!
 echo "[entrypoint] Background sync PID=${BG_PID}"
@@ -209,29 +236,39 @@ cleanup() {
     kill "$BG_PID" 2>/dev/null || true
     wait "$SERVER_PID" 2>/dev/null || true
 
-    # Step 4: Final sync — now includes Gateway-written MEMORY.md
-    # Use --no-size-only for MEMORY.md and memory/ so updates are always uploaded
-    # regardless of whether the file size changed (e.g. compaction rewrites).
+    # Step 4: Persist workspace to S3
+    # EFS mode: EFS is already durable — do a minimal S3 snapshot so that if
+    #   the employee later disables always-on, serverless AgentCore finds their
+    #   latest memory. (Cross-mode handoff)
+    # S3 mode: full sync as before.
     FINAL_BASE=$(cat /tmp/base_tenant_id 2>/dev/null || echo "$BASE_TENANT_ID")
     if [ "$FINAL_BASE" != "unknown" ] && [ -n "$FINAL_BASE" ]; then
         SYNC_TARGET="s3://${S3_BUCKET}/${FINAL_BASE}/workspace/"
 
-        # Sync memory files without --size-only so all recent writes are captured
-        aws s3 sync "$WORKSPACE/memory/" "${SYNC_TARGET}memory/" \
-            --region "$AWS_REGION" --quiet 2>/dev/null || true
-        aws s3 cp "$WORKSPACE/MEMORY.md" "${SYNC_TARGET}MEMORY.md" \
-            --region "$AWS_REGION" --quiet 2>/dev/null || true
-
-        # Sync everything else with size-only (skip large unchanged files)
-        aws s3 sync "$WORKSPACE/" "$SYNC_TARGET" \
-            --exclude "node_modules/*" --exclude "skills/_shared/*" --exclude "skills/*" \
-            --exclude "SOUL.md" --exclude "AGENTS.md" --exclude "TOOLS.md" --exclude "IDENTITY.md" \
-            --exclude ".personal_soul_backup.md" --exclude "knowledge/*" \
-            --size-only \
-            --region "$AWS_REGION" \
-            --quiet 2>/dev/null || true
-
-        echo "[entrypoint] Workspace flushed to ${SYNC_TARGET}"
+        if [ "$EFS_MODE" = "true" ]; then
+            # EFS → S3 snapshot: only memory + MEMORY.md (other files already in S3 from bootstrap)
+            echo "[entrypoint] EFS → S3 cross-mode snapshot..."
+            aws s3 sync "$WORKSPACE/memory/" "${SYNC_TARGET}memory/" \
+                --region "$AWS_REGION" --quiet 2>/dev/null || true
+            aws s3 cp "$WORKSPACE/MEMORY.md" "${SYNC_TARGET}MEMORY.md" \
+                --region "$AWS_REGION" --quiet 2>/dev/null || true
+            aws s3 cp "$WORKSPACE/HEARTBEAT.md" "${SYNC_TARGET}HEARTBEAT.md" \
+                --region "$AWS_REGION" --quiet 2>/dev/null || true
+        else
+            # Standard S3 mode: full sync
+            aws s3 sync "$WORKSPACE/memory/" "${SYNC_TARGET}memory/" \
+                --region "$AWS_REGION" --quiet 2>/dev/null || true
+            aws s3 cp "$WORKSPACE/MEMORY.md" "${SYNC_TARGET}MEMORY.md" \
+                --region "$AWS_REGION" --quiet 2>/dev/null || true
+            aws s3 sync "$WORKSPACE/" "$SYNC_TARGET" \
+                --exclude "node_modules/*" --exclude "skills/_shared/*" --exclude "skills/*" \
+                --exclude "SOUL.md" --exclude "AGENTS.md" --exclude "TOOLS.md" \
+                --exclude "IDENTITY.md" --exclude ".personal_soul_backup.md" \
+                --exclude "knowledge/*" \
+                --size-only --region "$AWS_REGION" \
+                --quiet 2>/dev/null || true
+        fi
+        echo "[entrypoint] Workspace persisted to ${SYNC_TARGET}"
     fi
     echo "[entrypoint] Done"
     exit 0

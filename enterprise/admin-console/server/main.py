@@ -75,6 +75,29 @@ def _resolve_gateway_account_id() -> str:
 _GATEWAY_INSTANCE_ID: str = _resolve_gateway_instance_id()
 _GATEWAY_ACCOUNT_ID: str = _resolve_gateway_account_id()
 
+
+def _bump_config_version() -> None:
+    """Write a new CONFIG#global-version to DynamoDB.
+
+    agent-container/server.py polls this every 5 minutes.  When the version
+    changes it clears its assembly cache so every tenant re-assembles their
+    SOUL/KB on the next request — no container restart required.
+
+    Called after: global SOUL save, position SOUL save, KB assignment changes,
+    model config changes, agent-config changes.
+    """
+    try:
+        import boto3 as _b3bv
+        version = datetime.now(timezone.utc).isoformat()
+        ddb = _b3bv.resource("dynamodb", region_name=db.AWS_REGION)
+        ddb.Table(db.TABLE_NAME).put_item(Item={
+            "PK": "ORG#acme", "SK": "CONFIG#global-version",
+            "GSI1PK": "TYPE#config", "GSI1SK": "CONFIG#global-version",
+            "version": version,
+        })
+    except Exception as e:
+        print(f"[config-version] bump failed (non-fatal): {e}")
+
 # Server start time — used to compute uptime for /settings/services
 _SERVER_START_TIME = time.time()
 
@@ -3293,6 +3316,7 @@ def set_position_kbs(pos_id: str, body: dict, authorization: str = Header(defaul
     cfg = _get_kb_assignments()
     cfg.setdefault("positionKBs", {})[pos_id] = body.get("kbIds", [])
     db.set_config("kb-assignments", cfg)
+    _bump_config_version()
     return cfg["positionKBs"][pos_id]
 
 @app.put("/api/v1/settings/kb-assignments/employee/{emp_id}")
@@ -3301,6 +3325,7 @@ def set_employee_kbs(emp_id: str, body: dict, authorization: str = Header(defaul
     cfg = _get_kb_assignments()
     cfg.setdefault("employeeKBs", {})[emp_id] = body.get("kbIds", [])
     db.set_config("kb-assignments", cfg)
+    _bump_config_version()
     return cfg["employeeKBs"][emp_id]
 
 @app.get("/api/v1/settings/security")
@@ -3976,6 +4001,7 @@ def put_global_soul(body: dict, authorization: str = Header(default="")):
     bucket = s3ops.bucket()
     s3ops._client().put_object(Bucket=bucket, Key="_shared/soul/global/SOUL.md",
                                Body=body.get("content", "").encode(), ContentType="text/markdown")
+    _bump_config_version()
     return {"saved": True}
 
 @app.get("/api/v1/security/positions/{pos_id}/soul")
@@ -3995,6 +4021,7 @@ def put_position_soul(pos_id: str, body: dict, authorization: str = Header(defau
     bucket = s3ops.bucket()
     s3ops._client().put_object(Bucket=bucket, Key=f"_shared/soul/positions/{pos_id}/SOUL.md",
                                Body=body.get("content", "").encode(), ContentType="text/markdown")
+    _bump_config_version()
     return {"saved": True}
 
 @app.get("/api/v1/security/positions/{pos_id}/tools")
@@ -4895,6 +4922,184 @@ def disable_twin(authorization: str = Header(default="")):
     user = _require_auth(authorization)
     db.disable_twin(user.employee_id)
     return {"active": False}
+
+
+# ── Personal Always-on (Portal self-service) ──────────────────────────────────
+# Employees can start/stop their own personal ECS Fargate container.
+# Uses emp_id as the agent_id so SSM paths are /always-on/{emp_id}/endpoint etc.
+# The container runs with the employee's personal workspace (S3 or EFS), NOT shared.
+
+def _launch_personal_always_on(emp_id: str, emp_name: str) -> dict:
+    """Start a personal ECS Fargate task for a single employee.
+    Returns the same shape as start_always_on_agent."""
+    stack     = os.environ.get("STACK_NAME",      "openclaw-multitenancy")
+    bucket    = os.environ.get("S3_BUCKET",       f"openclaw-tenants-{_GATEWAY_ACCOUNT_ID}")
+    ddb_table = os.environ.get("DYNAMODB_TABLE",  "openclaw-enterprise")
+    ddb_region = os.environ.get("DYNAMODB_REGION", "us-east-2")
+
+    ecs_cfg = _get_ecs_config()
+    if not ecs_cfg["subnet_id"] or not ecs_cfg["sg_id"]:
+        raise HTTPException(500, "ECS config missing — contact IT admin.")
+
+    ecr_image = _ALWAYS_ON_ECR_IMAGE or (
+        f"{_GATEWAY_ACCOUNT_ID}.dkr.ecr.{_GATEWAY_REGION}.amazonaws.com"
+        f"/{stack}-multitenancy-agent:latest"
+    )
+
+    # Stop any existing personal container first
+    try:
+        ssm = _boto3_main.client("ssm", region_name=_GATEWAY_REGION)
+        existing_arn = ssm.get_parameter(
+            Name=f"/openclaw/{stack}/always-on/{emp_id}/task-arn"
+        )["Parameter"]["Value"]
+        import boto3 as _b3ep
+        _b3ep.client("ecs", region_name=_GATEWAY_REGION).stop_task(
+            cluster=ecs_cfg["cluster"], task=existing_arn, reason="Personal container restart")
+    except Exception:
+        pass
+
+    try:
+        import boto3 as _b3ep2
+        ecs = _b3ep2.client("ecs", region_name=_GATEWAY_REGION)
+        resp = ecs.run_task(
+            cluster=ecs_cfg["cluster"],
+            taskDefinition=ecs_cfg["task_def"],
+            launchType="FARGATE",
+            networkConfiguration={
+                "awsvpcConfiguration": {
+                    "subnets":        [ecs_cfg["subnet_id"]],
+                    "securityGroups": [ecs_cfg["sg_id"]],
+                    "assignPublicIp": "ENABLED",
+                }
+            },
+            overrides={
+                "containerOverrides": [{
+                    "name": "always-on-agent",
+                    "image": ecr_image,
+                    "environment": [
+                        # Note: SHARED_AGENT_ID deliberately NOT set → personal workspace path
+                        {"name": "SESSION_ID",      "value": f"personal__{emp_id}"},
+                        {"name": "S3_BUCKET",       "value": bucket},
+                        {"name": "STACK_NAME",      "value": stack},
+                        {"name": "AWS_REGION",      "value": _GATEWAY_REGION},
+                        {"name": "DYNAMODB_TABLE",  "value": ddb_table},
+                        {"name": "DYNAMODB_REGION", "value": ddb_region},
+                        {"name": "SYNC_INTERVAL",   "value": "120"},
+                        {"name": "EFS_ENABLED",     "value": "true"},
+                    ],
+                }]
+            },
+            count=1,
+            tags=[
+                {"key": "agent_id",    "value": emp_id},
+                {"key": "agent_type",  "value": "personal"},
+                {"key": "stack_name",  "value": stack},
+            ],
+        )
+        failures = resp.get("failures", [])
+        if failures:
+            raise RuntimeError(f"ECS RunTask failures: {failures}")
+        task_arn = resp["tasks"][0]["taskArn"]
+    except Exception as e:
+        raise HTTPException(500, f"Failed to start personal container: {e}")
+
+    # Persist task ARN in SSM; endpoint registered by entrypoint.sh once RUNNING
+    ssm = _boto3_main.client("ssm", region_name=_GATEWAY_REGION)
+    try:
+        ssm.put_parameter(Name=f"/openclaw/{stack}/always-on/{emp_id}/task-arn",
+                          Value=task_arn, Type="String", Overwrite=True)
+        # Route this employee to their personal container
+        ssm.put_parameter(Name=f"/openclaw/{stack}/tenants/{emp_id}/always-on-agent",
+                          Value=emp_id, Type="String", Overwrite=True)
+    except Exception as e:
+        print(f"[personal-always-on] SSM write failed: {e}")
+
+    return {"started": True, "empId": emp_id, "taskArn": task_arn,
+            "note": "Personal container starting (~30s). Scheduled tasks will be active once running."}
+
+
+@app.get("/api/v1/portal/always-on")
+def get_portal_always_on_status(authorization: str = Header(default="")):
+    """Employee: get their personal always-on container status."""
+    user = _require_auth(authorization)
+    emp_id = user.employee_id
+    stack = os.environ.get("STACK_NAME", "openclaw-multitenancy")
+    ssm = _boto3_main.client("ssm", region_name=_GATEWAY_REGION)
+
+    task_arn = ""
+    endpoint = ""
+    ecs_status = "NOT_STARTED"
+
+    try:
+        task_arn = ssm.get_parameter(
+            Name=f"/openclaw/{stack}/always-on/{emp_id}/task-arn"
+        )["Parameter"]["Value"]
+    except Exception:
+        return {"running": False, "ecsStatus": "NOT_STARTED", "empId": emp_id}
+
+    try:
+        endpoint = ssm.get_parameter(
+            Name=f"/openclaw/{stack}/always-on/{emp_id}/endpoint"
+        )["Parameter"]["Value"]
+    except Exception:
+        pass
+
+    try:
+        import boto3 as _b3s
+        ecs_cfg = _get_ecs_config()
+        desc = _b3s.client("ecs", region_name=_GATEWAY_REGION).describe_tasks(
+            cluster=ecs_cfg["cluster"], tasks=[task_arn])
+        tasks = desc.get("tasks", [])
+        ecs_status = tasks[0].get("lastStatus", "UNKNOWN") if tasks else "NOT_FOUND"
+    except Exception:
+        pass
+
+    return {"running": ecs_status == "RUNNING", "ecsStatus": ecs_status,
+            "endpoint": endpoint or None, "taskArn": task_arn, "empId": emp_id}
+
+
+@app.post("/api/v1/portal/always-on")
+def start_portal_always_on(authorization: str = Header(default="")):
+    """Employee: start their personal always-on container."""
+    user = _require_auth(authorization)
+    return _launch_personal_always_on(user.employee_id, user.name)
+
+
+@app.delete("/api/v1/portal/always-on")
+def stop_portal_always_on(authorization: str = Header(default="")):
+    """Employee: stop their personal always-on container."""
+    user = _require_auth(authorization)
+    emp_id = user.employee_id
+    stack = os.environ.get("STACK_NAME", "openclaw-multitenancy")
+
+    task_arn = ""
+    try:
+        ssm = _boto3_main.client("ssm", region_name=_GATEWAY_REGION)
+        task_arn = ssm.get_parameter(
+            Name=f"/openclaw/{stack}/always-on/{emp_id}/task-arn"
+        )["Parameter"]["Value"]
+    except Exception:
+        pass
+
+    if task_arn:
+        try:
+            import boto3 as _b3sp
+            ecs_cfg = _get_ecs_config()
+            _b3sp.client("ecs", region_name=_GATEWAY_REGION).stop_task(
+                cluster=ecs_cfg["cluster"], task=task_arn, reason="Stopped by employee")
+        except Exception as e:
+            print(f"[personal-always-on] stop failed: {e}")
+
+    # Remove SSM routing and task tracking
+    ssm = _boto3_main.client("ssm", region_name=_GATEWAY_REGION)
+    for path in [f"/always-on/{emp_id}/task-arn", f"/always-on/{emp_id}/endpoint",
+                 f"/tenants/{emp_id}/always-on-agent"]:
+        try:
+            ssm.delete_parameter(Name=f"/openclaw/{stack}{path}")
+        except Exception:
+            pass
+
+    return {"stopped": True, "empId": emp_id, "taskArn": task_arn}
 
 
 # ── Public twin endpoints (NO auth required) ──────────────────────────────────

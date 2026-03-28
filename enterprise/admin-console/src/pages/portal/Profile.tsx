@@ -32,6 +32,8 @@ export default function PortalProfile() {
   const [twin, setTwin] = useState<{ active: boolean; url?: string; chatCount?: number; viewCount?: number } | null>(null);
   const [twinLoading, setTwinLoading] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [alwaysOn, setAlwaysOn] = useState<{ running: boolean; ecsStatus?: string } | null>(null);
+  const [alwaysOnLoading, setAlwaysOnLoading] = useState(false);
 
   useEffect(() => {
     api.get<any>('/portal/profile').then(data => {
@@ -39,6 +41,7 @@ export default function PortalProfile() {
       setUserMd(data.userMd || '');
     }).catch(() => {});
     api.get<any>('/portal/twin').then(setTwin).catch(() => {});
+    api.get<any>('/portal/always-on').then(setAlwaysOn).catch(() => {});
   }, []);
 
   const handleTwinToggle = useCallback(async () => {
@@ -54,6 +57,26 @@ export default function PortalProfile() {
     } catch {}
     setTwinLoading(false);
   }, [twin]);
+
+  const handleAlwaysOnToggle = useCallback(async () => {
+    setAlwaysOnLoading(true);
+    try {
+      if (alwaysOn?.running) {
+        await api.del('/portal/always-on');
+        setAlwaysOn({ running: false, ecsStatus: 'STOPPED' });
+      } else {
+        const data = await api.post<any>('/portal/always-on', {});
+        setAlwaysOn({ running: false, ecsStatus: 'STARTING', ...data });
+        // Poll until RUNNING (up to 60s)
+        for (let i = 0; i < 12; i++) {
+          await new Promise(r => setTimeout(r, 5000));
+          const status = await api.get<any>('/portal/always-on').catch(() => null);
+          if (status) { setAlwaysOn(status); if (status.running) break; }
+        }
+      }
+    } catch {}
+    setAlwaysOnLoading(false);
+  }, [alwaysOn]);
 
   const handleCopy = useCallback(() => {
     if (twin?.url) {
@@ -224,6 +247,51 @@ export default function PortalProfile() {
         {!twin?.active && (
           <div className="rounded-xl bg-surface-dim px-3 py-3 text-xs text-text-muted">
             When enabled, you get a shareable link. Visitors can ask your AI questions and get responses based on your expertise and memory — useful when you're unavailable.
+          </div>
+        )}
+      </Card>
+
+      {/* Persistent Mode */}
+      <Card>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Power size={16} className={alwaysOn?.running ? 'text-primary' : 'text-text-muted'} />
+            <div>
+              <h3 className="text-sm font-semibold text-text-primary">Persistent Mode</h3>
+              <p className="text-xs text-text-muted">Your agent runs continuously — enables scheduled reminders and instant responses</p>
+            </div>
+          </div>
+          <button
+            onClick={handleAlwaysOnToggle}
+            disabled={alwaysOnLoading}
+            className={`relative flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${alwaysOn?.running ? 'bg-primary' : 'bg-dark-border'} disabled:opacity-50`}
+          >
+            <span className={`absolute left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${alwaysOn?.running ? 'translate-x-5' : 'translate-x-0'}`} />
+          </button>
+        </div>
+
+        {alwaysOn?.running ? (
+          <div className="space-y-2">
+            <div className="rounded-xl bg-primary/5 border border-primary/20 px-3 py-2.5 flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-primary animate-pulse shrink-0" />
+              <p className="text-xs text-primary font-medium">Persistent mode active</p>
+              <span className="text-[10px] text-text-muted ml-auto">Scheduled tasks enabled</span>
+            </div>
+            <p className="text-[10px] text-text-muted">
+              Your agent is always running. Reminders will fire on time. Turn off to stop the container and return to on-demand mode.
+            </p>
+          </div>
+        ) : alwaysOnLoading ? (
+          <div className="rounded-xl bg-primary/5 border border-primary/10 px-3 py-2.5 flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-primary/60 animate-pulse shrink-0" />
+            <p className="text-xs text-text-muted">
+              {alwaysOn?.ecsStatus === 'STARTING' ? 'Container starting (~30s)...' : 'Processing...'}
+            </p>
+          </div>
+        ) : (
+          <div className="rounded-xl bg-surface-dim px-3 py-3 text-xs text-text-muted space-y-1">
+            <p>Enable for reliable scheduled reminders, recurring tasks, and 0ms response time.</p>
+            <p className="text-[10px] opacity-70">Note: incurs additional compute cost (~$15/mo).</p>
           </div>
         )}
       </Card>

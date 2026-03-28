@@ -53,6 +53,38 @@ logger.info("openclaw binary: %s", OPENCLAW_BIN)
 _assembled_tenants: set = set()
 _assembly_lock = threading.Lock()
 
+# Config version tracking — when IT changes global SOUL/KB, the version bumps.
+# Every CONFIG_VERSION_CHECK_INTERVAL seconds, we query DynamoDB for the version.
+# If it changed, all tenants are evicted from _assembled_tenants so they re-assemble
+# on their next request (picking up the latest SOUL/KB from S3).
+_config_version: str = ""
+_config_version_checked_at: float = 0.0
+_CONFIG_VERSION_CHECK_INTERVAL = 300  # seconds (5 minutes)
+
+
+def _check_and_refresh_config_version() -> None:
+    """Check DynamoDB CONFIG#global-version and clear assembly cache if changed.
+    Called before each invocation; throttled to once per 5 minutes."""
+    global _config_version, _config_version_checked_at
+    now = time.time()
+    if now - _config_version_checked_at < _CONFIG_VERSION_CHECK_INTERVAL:
+        return
+    _config_version_checked_at = now
+    try:
+        import boto3 as _b3cv
+        ddb = _b3cv.resource("dynamodb", region_name=DYNAMODB_REGION)
+        resp = ddb.Table(DYNAMODB_TABLE).get_item(
+            Key={"PK": "ORG#acme", "SK": "CONFIG#global-version"})
+        new_version = resp.get("Item", {}).get("version", "")
+        if new_version and new_version != _config_version:
+            logger.info(
+                "Global config version changed: %s → %s — clearing assembly cache for %d tenants",
+                _config_version or "(initial)", new_version, len(_assembled_tenants))
+            _assembled_tenants.clear()
+            _config_version = new_version
+    except Exception as e:
+        logger.warning("Config version check failed (non-fatal): %s", e)
+
 WORKSPACE = os.environ.get("OPENCLAW_WORKSPACE", "/root/.openclaw/workspace")
 S3_BUCKET = os.environ.get("S3_BUCKET", "openclaw-tenants-000000000000")
 STACK_NAME = os.environ.get("STACK_NAME", "dev")
@@ -858,6 +890,8 @@ class AgentCoreHandler(BaseHTTPRequestHandler):
         self._handle_invocation(tenant_id, message, payload)
 
     def _handle_invocation(self, tenant_id: str, message: str, payload: dict):
+        # Check if global config (SOUL/KB) changed — evicts stale assembly cache
+        _check_and_refresh_config_version()
         # Ensure workspace is assembled for this tenant (first invocation only)
         _ensure_workspace_assembled(tenant_id)
 

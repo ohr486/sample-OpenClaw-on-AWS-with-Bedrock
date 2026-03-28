@@ -859,6 +859,53 @@ Resources:
       LogGroupName: !Sub "/ecs/${AWS::StackName}-always-on"
       RetentionInDays: 30
 
+  # ---- EFS: persistent workspace storage for always-on containers ----
+  # Each always-on container mounts EFS at /mnt/efs.
+  # entrypoint.sh uses /mnt/efs/{emp_id}/workspace/ as the workspace path,
+  # replacing the S3 sync watchdog — writes are durable immediately (NFS write-through).
+
+  AlwaysOnEFSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "Allow NFS from EC2 gateway and ECS tasks to EFS"
+      VpcId: !Ref OpenClawVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 2049
+          ToPort: 2049
+          SourceSecurityGroupId: !Ref OpenClawSecurityGroup
+          Description: "EC2 gateway → EFS"
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: "0.0.0.0/0"
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-efs-sg"
+
+  # Self-referencing ingress: added after AlwaysOnTaskSecurityGroup is created
+  # (handled by allowing ECS SG after AlwaysOnTaskSecurityGroup exists)
+
+  AlwaysOnEFS:
+    Type: AWS::EFS::FileSystem
+    Properties:
+      Encrypted: true
+      PerformanceMode: generalPurpose
+      ThroughputMode: elastic
+      LifecyclePolicies:
+        - TransitionToIA: AFTER_7_DAYS
+        - TransitionToPrimaryStorageClass: AFTER_1_ACCESS
+      FileSystemTags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-always-on-workspace"
+
+  AlwaysOnEFSMountTarget:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId: !Ref AlwaysOnEFS
+      SubnetId: !Ref PublicSubnet
+      SecurityGroups:
+        - !Ref AlwaysOnEFSSecurityGroup
+
   # Security group: ECS tasks accept inbound 8080 only from the EC2 gateway
   AlwaysOnTaskSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -943,9 +990,28 @@ Resources:
                 Action:
                   - ecr:GetAuthorizationToken
                 Resource: "*"
+              - Sid: EFSAccess
+                Effect: Allow
+                Action:
+                  - elasticfilesystem:ClientMount
+                  - elasticfilesystem:ClientWrite
+                  - elasticfilesystem:ClientRootAccess
+                  - elasticfilesystem:DescribeMountTargets
+                Resource: !GetAtt AlwaysOnEFS.Arn
       Tags:
         - Key: Name
           Value: !Sub "${AWS::StackName}-ecs-task-role"
+
+  # Allow ECS tasks to reach EFS (added after AlwaysOnTaskSecurityGroup is created)
+  AlwaysOnEFSIngressFromECS:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref AlwaysOnEFSSecurityGroup
+      IpProtocol: tcp
+      FromPort: 2049
+      ToPort: 2049
+      SourceSecurityGroupId: !Ref AlwaysOnTaskSecurityGroup
+      Description: "ECS always-on tasks → EFS"
 
   # ECS Cluster for always-on agents
   AlwaysOnEcsCluster:
@@ -1002,6 +1068,20 @@ Resources:
               Value: "8080"
             - Name: SYNC_INTERVAL
               Value: "120"
+            - Name: EFS_ENABLED
+              Value: "true"
+          MountPoints:
+            - ContainerPath: /mnt/efs
+              SourceVolume: always-on-workspace
+              ReadOnly: false
+      Volumes:
+        - Name: always-on-workspace
+          EFSVolumeConfiguration:
+            FileSystemId: !Ref AlwaysOnEFS
+            RootDirectory: /
+            TransitEncryption: ENABLED
+            AuthorizationConfig:
+              IAM: ENABLED
       Tags:
         - Key: Name
           Value: !Sub "${AWS::StackName}-always-on-task"
@@ -1095,6 +1175,12 @@ Outputs:
     Value: !Ref AlwaysOnTaskSecurityGroup
     Export:
       Name: !Sub "${AWS::StackName}-AlwaysOnTaskSG"
+
+  AlwaysOnEFSId:
+    Description: "EFS FileSystem ID for always-on agent workspaces"
+    Value: !Ref AlwaysOnEFS
+    Export:
+      Name: !Sub "${AWS::StackName}-AlwaysOnEFS"
 
   AlwaysOnSubnetId:
     Description: "Subnet ID for always-on ECS tasks (public subnet — tasks self-register private IP)"
