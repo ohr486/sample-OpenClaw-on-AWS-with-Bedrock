@@ -2404,7 +2404,7 @@ def get_sessions(source: str = "auto", authorization: str = Header(default="")):
                 s["agentId"] = agent["id"] if agent else s.get("agentId", "")
                 s["agentName"] = agent["name"] if agent else ""
                 if not s.get("channel") or s["channel"] == "unknown":
-                    s["channel"] = emp.get("channels", ["portal"])[0]
+                    s["channel"] = (emp.get("channels") or ["portal"])[0]
             else:
                 continue
 
@@ -2453,7 +2453,7 @@ def get_sessions(source: str = "auto", authorization: str = Header(default="")):
             cw["employeeName"] = emp["name"]
             cw["agentId"] = agent["id"] if agent else ""
             cw["agentName"] = agent["name"] if agent else f"Agent ({emp['positionName']})"
-            cw["channel"] = emp.get("channels", ["discord"])[0] if not cw.get("channel") or cw["channel"] == "unknown" else cw["channel"]
+            cw["channel"] = (emp.get("channels") or ["discord"])[0] if not cw.get("channel") or cw["channel"] == "unknown" else cw["channel"]
             cw["status"] = "active"
 
             if cw.get("timestamp") and not cw.get("startedAt"):
