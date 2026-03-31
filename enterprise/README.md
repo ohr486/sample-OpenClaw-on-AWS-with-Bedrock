@@ -373,8 +373,9 @@ Zero IT friction. Employees self-service in 30 seconds. Admins see all connectio
 | **IAM** | Least privilege + runtime tiers | Standard role: own S3/DynamoDB only. Executive role: cross-department. Can't escalate via prompt |
 | **Data** | Role-based scoping | Admin: all. Manager: own dept (BFS rollup). Employee: own only. API-enforced |
 | **Agent** | SOUL permission control | Plan A pre-execution allowlist. Plan E post-response audit. Exec profile opts out |
-| **Audit** | Comprehensive logging | Every invocation, tool call, permission denial, SOUL change, IM pairing → DynamoDB |
+| **Audit** | Comprehensive logging | Every invocation, tool call, permission denial, SOUL change, IM pairing, guardrail blocks → DynamoDB |
 | **Digital Twin** | Token-based access | Secure token in URL, stored in DynamoDB. Employee revokes instantly. View/chat counts tracked |
+| **L5 Guardrail** | AWS Bedrock Guardrails | Per-Runtime content policy. `apply_guardrail()` called on INPUT before forwarding to OpenClaw and on OUTPUT before returning to user. Standard Runtime: topic denial + PII. Exec Runtime: no guardrail. Every block logged to DynamoDB `guardrail_block` audit event. |
 
 ## Quick Start
 
@@ -618,6 +619,14 @@ Security Center → **Runtimes → Position Assignments** → change which runti
 Agent Factory → **Configuration tab** → set Sonnet 4.5 for Solutions Architect
 → set `recentTurnsPreserve: 20` for Executive positions
 → set `language: 中文` for any position → agents default to Chinese
+
+### 11. Bedrock Guardrails (L5 Content Policy)
+
+Standard Runtime has `GUARDRAIL_ID` set as an environment variable. Every invocation goes through two checks in `server.py`: `apply_guardrail(source=INPUT)` before forwarding to OpenClaw, and `apply_guardrail(source=OUTPUT)` before returning the response. If either check returns `GUARDRAIL_INTERVENED`, the user gets the configured `blockedMessaging` instead of the agent's answer — OpenClaw is never even invoked for blocked inputs.
+
+Exec Runtime has no `GUARDRAIL_ID` — the checks are skipped entirely. Same question, two different runtimes, two different outcomes. Every block is written to DynamoDB as a `guardrail_block` audit event visible in **Audit Center → Guardrail Events**.
+
+To assign a guardrail to any runtime: **Security Center → Runtimes → Configure** → select from the Guardrail dropdown. To create a new guardrail: `aws bedrock create-guardrail ...` then it appears in the dropdown automatically.
 
 ### 10. Knowledge Base Assignments
 Knowledge Base → **Assignments tab** → all positions are pre-assigned these KBs by default:

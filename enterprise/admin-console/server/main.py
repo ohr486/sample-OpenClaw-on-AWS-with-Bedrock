@@ -1546,8 +1546,8 @@ def playground_send(body: PlaygroundMessage, authorization: str = Header(default
         router_url = os.environ.get("TENANT_ROUTER_URL", "http://localhost:8090")
         try:
             import requests as _req
-            # Use "portal" as channel and bare emp_id as user_id
-            # This matches how Portal Chat sends requests
+            # Use "portal" as channel — Tenant Router maps portal → "pt__" prefix (not "port__"),
+            # which avoids the Gateway portal-callback deadlock. See tenant_router.py _CHANNEL_ALIASES.
             r = _req.post(f"{router_url}/route", json={
                 "channel": "portal",
                 "user_id": emp_id,

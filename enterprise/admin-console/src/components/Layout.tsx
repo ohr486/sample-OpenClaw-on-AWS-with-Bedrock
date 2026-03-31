@@ -11,6 +11,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import ClawForgeLogo from './ClawForgeLogo';
 import AdminAssistant from './AdminAssistant';
+import { ErrorBoundary } from './ui';
 import clsx from 'clsx';
 
 interface NavItem {
@@ -315,7 +316,7 @@ export default function Layout({ children }: { children: ReactNode }) {
 
         {/* Page content */}
         <main className="flex-1 overflow-y-auto p-4 lg:p-6">
-          {children}
+          <ErrorBoundary>{children}</ErrorBoundary>
         </main>
       </div>
 

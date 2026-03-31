@@ -75,7 +75,7 @@ export default function AgentList() {
   const deptOptions = [{ label: 'All Positions', value: 'all' }, ...Array.from(deptSet).map(d => ({ label: d, value: d }))];
 
   const filtered = currentList.filter(a => {
-    const matchText = !filterText || a.name.toLowerCase().includes(filterText.toLowerCase()) || a.employeeName.toLowerCase().includes(filterText.toLowerCase()) || a.positionName.toLowerCase().includes(filterText.toLowerCase());
+    const matchText = !filterText || a.name.toLowerCase().includes(filterText.toLowerCase()) || (a.employeeName || '').toLowerCase().includes(filterText.toLowerCase()) || a.positionName.toLowerCase().includes(filterText.toLowerCase());
     const matchDept = filterDept === 'all' || a.positionName === filterDept;
     const matchStatus = filterStatus === 'all' || a.status === filterStatus;
     return matchText && matchDept && matchStatus;
@@ -300,9 +300,9 @@ export default function AgentList() {
             { key: 'employee', label: 'Employee', render: (a: Agent) => <span className="text-sm">{a.employeeName}</span> },
             { key: 'position', label: 'Position', render: (a: Agent) => <Badge>{a.positionName}</Badge> },
             { key: 'channels', label: 'Channels', render: (a: Agent) => (
-              <div className="flex flex-wrap gap-1">{a.channels.map(c => <Badge key={c} color="info">{CHANNEL_LABELS[c as ChannelType]}</Badge>)}</div>
+              <div className="flex flex-wrap gap-1">{(a.channels || []).map(c => <Badge key={c} color="info">{CHANNEL_LABELS[c as ChannelType]}</Badge>)}</div>
             )},
-            { key: 'skills', label: 'Skills', render: (a: Agent) => <span className="text-sm text-text-secondary">{a.skills.length}</span> },
+            { key: 'skills', label: 'Skills', render: (a: Agent) => <span className="text-sm text-text-secondary">{(a.skills || []).length}</span> },
             { key: 'quality', label: 'Quality', render: (a: Agent) => (
               <span className={`text-sm font-medium ${(a.qualityScore || 0) >= 4.5 ? 'text-success' : (a.qualityScore || 0) >= 4.0 ? 'text-warning' : 'text-danger'}`}>
                 ⭐ {a.qualityScore?.toFixed(1) || '—'}
@@ -310,9 +310,9 @@ export default function AgentList() {
             )},
             { key: 'soul', label: 'SOUL', render: (a: Agent) => (
               <div className="flex gap-1 text-xs">
-                <span className="text-text-muted">G:v{a.soulVersions.global}</span>
-                <span className="text-primary">P:v{a.soulVersions.position}</span>
-                <span className="text-success">U:v{a.soulVersions.personal}</span>
+                <span className="text-text-muted">G:v{a.soulVersions?.global ?? '?'}</span>
+                <span className="text-primary">P:v{a.soulVersions?.position ?? '?'}</span>
+                <span className="text-success">U:v{a.soulVersions?.personal ?? '?'}</span>
               </div>
             )},
             { key: 'status', label: 'Status', render: (a: Agent) => <StatusDot status={a.status} /> },
