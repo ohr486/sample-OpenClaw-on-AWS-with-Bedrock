@@ -1091,6 +1091,8 @@ class AgentCoreHandler(BaseHTTPRequestHandler):
             self._respond(200, {"status": "Healthy", "time_of_last_update": int(time.time())})
         elif self.path == "/gateway-dashboard":
             self._handle_gateway_dashboard()
+        elif self.path == "/gateway-approve-pairing":
+            self._handle_gateway_approve_pairing()
         else:
             self._respond(404, {"error": "not found"})
 
@@ -1126,6 +1128,36 @@ class AgentCoreHandler(BaseHTTPRequestHandler):
                 self._respond(500, {"error": "Gateway dashboard URL not found", "output": output[-300:]})
         except subprocess.TimeoutExpired:
             self._respond(504, {"error": "Gateway dashboard timed out"})
+        except Exception as e:
+            self._respond(500, {"error": str(e)})
+
+    def _handle_gateway_approve_pairing(self):
+        """Auto-approve the most recent pending device pairing request.
+        Called by the admin console after the browser opens the Gateway Console
+        and creates a pending pairing request."""
+        try:
+            env = os.environ.copy()
+            env["HOME"] = os.environ.get("HOME", "/root")
+            env["PATH"] = "/usr/local/bin:/usr/bin:/bin:" + env.get("PATH", "")
+            gw_token = os.environ.get("OPENCLAW_GATEWAY_TOKEN", "")
+            cmd = [OPENCLAW_BIN, "devices", "approve", "--latest", "--json"]
+            if gw_token:
+                cmd.extend(["--token", gw_token])
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=15, env=env,
+            )
+            output = result.stdout + result.stderr
+            logger.info("gateway-approve-pairing: exit=%d output=%s", result.returncode, output[:300])
+            if result.returncode == 0:
+                try:
+                    data = json.loads(result.stdout)
+                except (json.JSONDecodeError, ValueError):
+                    data = {"raw": output[:300]}
+                self._respond(200, {"approved": True, "detail": data})
+            else:
+                self._respond(200, {"approved": False, "reason": output[:300]})
+        except subprocess.TimeoutExpired:
+            self._respond(504, {"error": "Approve pairing timed out"})
         except Exception as e:
             self._respond(500, {"error": str(e)})
 

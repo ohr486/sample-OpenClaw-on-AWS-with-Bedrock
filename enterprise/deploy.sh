@@ -402,29 +402,137 @@ else
     success "  SSM tenant→position mappings created"
 fi
 
-# ── Step 7: Configure EC2 ─────────────────────────────────────────────────────
-info "[7/7] Configuring EC2 gateway..."
+# ── Step 7: Deploy Admin Console + Gateway Services to EC2 ────────────────────
+info "[7/9] Building and deploying Admin Console..."
 
-aws ssm send-command \
+# Build frontend (requires Node.js locally)
+if command -v npm &>/dev/null; then
+  ADMIN_DIR="$SCRIPT_DIR/admin-console"
+  cd "$ADMIN_DIR"
+  npm install --silent 2>/dev/null
+  npm run build 2>/dev/null
+  cd "$SCRIPT_DIR/.."
+
+  # Package and upload
+  ADMIN_TAR="/tmp/admin-deploy-$$.tar.gz"
+  COPYFILE_DISABLE=1 tar czf "$ADMIN_TAR" \
+    -C "$SCRIPT_DIR/admin-console" dist server start.sh 2>/dev/null || \
+  tar czf "$ADMIN_TAR" \
+    -C "$SCRIPT_DIR/admin-console" dist server start.sh
+  aws s3 cp "$ADMIN_TAR" "s3://${S3_BUCKET}/_deploy/admin-deploy.tar.gz" \
+    --region "$REGION" --quiet
+  rm -f "$ADMIN_TAR"
+  success "  Admin Console packaged → S3"
+else
+  warn "  npm not found — skipping Admin Console build. Deploy manually (see README Step 4)."
+fi
+
+# Upload gateway service files
+info "[8/9] Uploading Gateway services..."
+GW_DIR="$SCRIPT_DIR/gateway"
+if [ -d "$GW_DIR" ]; then
+  for f in tenant_router.py bedrock_proxy_h2.js bedrock-proxy-h2.service tenant-router.service; do
+    [ -f "$GW_DIR/$f" ] && aws s3 cp "$GW_DIR/$f" "s3://${S3_BUCKET}/_deploy/$f" --region "$REGION" --quiet
+  done
+  success "  Gateway files uploaded to S3"
+else
+  warn "  enterprise/gateway/ not found — skipping gateway upload"
+fi
+
+# ── Step 9: Configure EC2 — install everything via SSM ────────────────────────
+info "[9/9] Configuring EC2 (Admin Console + Gateway + env)..."
+
+# Get ECS outputs for /etc/openclaw/env
+ECS_CLUSTER=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "$REGION" \
+  --query 'Stacks[0].Outputs[?OutputKey==`AlwaysOnEcsClusterName`].OutputValue' --output text 2>/dev/null || echo "")
+ECS_SUBNET=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "$REGION" \
+  --query 'Stacks[0].Outputs[?OutputKey==`AlwaysOnSubnetId`].OutputValue' --output text 2>/dev/null || echo "")
+ECS_SG=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "$REGION" \
+  --query 'Stacks[0].Outputs[?OutputKey==`AlwaysOnTaskSecurityGroupId`].OutputValue' --output text 2>/dev/null || echo "")
+
+EC2_CMD_ID=$(aws ssm send-command \
   --instance-ids "$INSTANCE_ID" \
   --document-name "AWS-RunShellScript" \
   --region "$REGION" \
+  --timeout-seconds 300 \
   --parameters "commands=[
-    \"echo 'export STACK_NAME=$STACK_NAME' >> /home/ec2-user/.bashrc\",
-    \"echo 'export AWS_REGION=$REGION' >> /home/ec2-user/.bashrc\",
-    \"echo 'export AGENTCORE_RUNTIME_ID=$RUNTIME_ID' >> /home/ec2-user/.bashrc\",
-    \"echo 'export DYNAMODB_TABLE=$DYNAMODB_TABLE' >> /home/ec2-user/.bashrc\",
-    \"echo 'export DYNAMODB_REGION=$DYNAMODB_REGION' >> /home/ec2-user/.bashrc\",
-    \"apt-get update -qq && apt-get install -y python3.12-venv 2>/dev/null || true\",
-    \"pip3 install --break-system-packages --upgrade boto3 botocore 2>/dev/null || true\",
-    \"systemctl restart openclaw-gateway 2>/dev/null || true\",
-    \"systemctl restart openclaw-admin 2>/dev/null || true\",
-    \"systemctl restart tenant-router 2>/dev/null || true\",
-    \"echo DONE\"
+    \"set -e\",
+    \"# ── Write /etc/openclaw/env (all services read this) ──\",
+    \"mkdir -p /etc/openclaw\",
+    \"cat > /etc/openclaw/env << 'ENVEOF'
+STACK_NAME=${STACK_NAME}
+AWS_REGION=${REGION}
+GATEWAY_REGION=${REGION}
+DYNAMODB_TABLE=${DYNAMODB_TABLE}
+DYNAMODB_REGION=${DYNAMODB_REGION}
+S3_BUCKET=${S3_BUCKET}
+GATEWAY_INSTANCE_ID=${INSTANCE_ID}
+ECS_CLUSTER_NAME=${ECS_CLUSTER}
+ECS_SUBNET_ID=${ECS_SUBNET}
+ECS_TASK_SG_ID=${ECS_SG}
+AGENTCORE_RUNTIME_ID=${RUNTIME_ID}
+ENVEOF\",
+    \"echo '[deploy] /etc/openclaw/env written'\",
+    \"# ── Install Admin Console ──\",
+    \"python3 -m venv /opt/admin-venv 2>/dev/null || true\",
+    \"/opt/admin-venv/bin/pip install -q fastapi uvicorn boto3 requests python-multipart anthropic 2>/dev/null || true\",
+    \"aws s3 cp s3://${S3_BUCKET}/_deploy/admin-deploy.tar.gz /tmp/admin-deploy.tar.gz --region ${REGION} 2>/dev/null || true\",
+    \"if [ -f /tmp/admin-deploy.tar.gz ]; then mkdir -p /opt/admin-console && tar xzf /tmp/admin-deploy.tar.gz -C /opt/admin-console && chown -R ubuntu:ubuntu /opt/admin-console /opt/admin-venv && chmod +x /opt/admin-console/start.sh; fi\",
+    \"# ── Admin Console systemd ──\",
+    \"cat > /etc/systemd/system/openclaw-admin.service << 'SVCEOF'
+[Unit]
+Description=OpenClaw Admin Console
+After=network.target
+[Service]
+Type=simple
+User=ubuntu
+EnvironmentFile=/etc/openclaw/env
+ExecStart=/opt/admin-console/start.sh
+Restart=always
+RestartSec=5
+[Install]
+WantedBy=multi-user.target
+SVCEOF\",
+    \"# ── Install Gateway services ──\",
+    \"pip3 install --break-system-packages --upgrade boto3 botocore requests 2>/dev/null || true\",
+    \"aws s3 cp s3://${S3_BUCKET}/_deploy/tenant_router.py /home/ubuntu/tenant_router.py --region ${REGION} 2>/dev/null || true\",
+    \"aws s3 cp s3://${S3_BUCKET}/_deploy/bedrock_proxy_h2.js /home/ubuntu/bedrock_proxy_h2.js --region ${REGION} 2>/dev/null || true\",
+    \"aws s3 cp s3://${S3_BUCKET}/_deploy/tenant-router.service /etc/systemd/system/tenant-router.service --region ${REGION} 2>/dev/null || true\",
+    \"aws s3 cp s3://${S3_BUCKET}/_deploy/bedrock-proxy-h2.service /etc/systemd/system/bedrock-proxy-h2.service --region ${REGION} 2>/dev/null || true\",
+    \"chown ubuntu:ubuntu /home/ubuntu/tenant_router.py /home/ubuntu/bedrock_proxy_h2.js 2>/dev/null || true\",
+    \"# ── Start all services ──\",
+    \"systemctl daemon-reload\",
+    \"systemctl enable openclaw-admin tenant-router bedrock-proxy-h2 openclaw-gateway 2>/dev/null || true\",
+    \"systemctl restart openclaw-admin tenant-router bedrock-proxy-h2 openclaw-gateway 2>/dev/null || true\",
+    \"echo ALL_SERVICES_STARTED\"
   ]" \
-  --output text --query 'Command.CommandId' > /dev/null 2>&1 || warn "EC2 config via SSM failed (instance may not be ready yet)"
+  --output text --query 'Command.CommandId' 2>/dev/null) || warn "EC2 SSM command failed"
 
-success "EC2 configured"
+if [ -n "$EC2_CMD_ID" ]; then
+  info "  SSM command: $EC2_CMD_ID — waiting for completion..."
+  for i in $(seq 1 20); do
+    sleep 5
+    CMD_STATUS=$(aws ssm get-command-invocation \
+      --command-id "$EC2_CMD_ID" --instance-id "$INSTANCE_ID" \
+      --region "$REGION" --query 'Status' --output text 2>/dev/null || echo "Pending")
+    case "$CMD_STATUS" in
+      Success) success "  EC2 fully configured — all services started"; break ;;
+      Failed)  warn "  EC2 config had errors (check SSM output)"; break ;;
+      *) echo -n "." ;;
+    esac
+  done
+fi
+
+# ── Step 9.5: Allow ECS tasks to reach SSM VPC endpoint (if VPC endpoints exist) ──
+SSM_EP_SG=$(aws ec2 describe-vpc-endpoints --region "$REGION" \
+  --filters "Name=service-name,Values=com.amazonaws.${REGION}.ssm" \
+  --query 'VpcEndpoints[0].Groups[0].GroupId' --output text 2>/dev/null || echo "")
+if [ -n "$SSM_EP_SG" ] && [ "$SSM_EP_SG" != "None" ] && [ -n "$ECS_SG" ] && [ "$ECS_SG" != "None" ]; then
+  aws ec2 authorize-security-group-ingress \
+    --group-id "$SSM_EP_SG" --protocol tcp --port 443 \
+    --source-group "$ECS_SG" --region "$REGION" 2>/dev/null && \
+    success "  ECS→SSM VPC endpoint SG rule added" || true
+fi
 
 # ── Done ──────────────────────────────────────────────────────────────────────
 echo ""

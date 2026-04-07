@@ -291,6 +291,50 @@ def get_gateway_dashboard(authorization: str = Header(default="")):
         return {"available": False, "reason": str(e)}
 
 
+@router.post("/approve-pairing")
+def approve_gateway_pairing(authorization: str = Header(default="")):
+    """Auto-approve the latest pending device pairing request on the Gateway.
+    Called by the frontend after opening the Gateway Console URL, so the
+    browser's new device pairing is approved without manual CLI intervention.
+
+    Runs `openclaw devices approve --latest` on the EC2 host (which has the
+    openclaw CLI installed) connecting to the Fargate container's Gateway
+    via VPC networking (ws://container_ip:18789)."""
+    import subprocess
+    user = _require_employee_auth(authorization)
+    result = _get_cached_gateway(user.employee_id)
+
+    if not result:
+        return {"approved": False, "reason": "Agent is not always-on"}
+
+    base_url, gw_token = result
+    # Build WebSocket URL for the Gateway (port 18789)
+    ws_url = base_url.replace("http://", "ws://")
+    cmd = [
+        "/home/ubuntu/.nvm/versions/node/v22.22.1/bin/openclaw",
+        "devices", "approve", "--latest", "--json",
+        "--url", ws_url,
+    ]
+    if gw_token:
+        cmd.extend(["--token", gw_token])
+    try:
+        env = os.environ.copy()
+        env["PATH"] = "/home/ubuntu/.nvm/versions/node/v22.22.1/bin:" + env.get("PATH", "")
+        env["HOME"] = "/home/ubuntu"
+        # Allow plaintext WS to private VPC IP (Fargate container in same VPC)
+        env["OPENCLAW_ALLOW_INSECURE_PRIVATE_WS"] = "1"
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=15, env=env)
+        output = proc.stdout + proc.stderr
+        logger.info("approve-pairing: exit=%d output=%s", proc.returncode, output[:300])
+        if proc.returncode == 0:
+            return {"approved": True, "detail": output[:300]}
+        return {"approved": False, "reason": output[:300]}
+    except subprocess.TimeoutExpired:
+        return {"approved": False, "reason": "Approve timed out"}
+    except Exception as e:
+        return {"approved": False, "reason": str(e)}
+
+
 def _authenticate_proxy(request: Request, authorization: str) -> _UserInfo:
     """Authenticate for gateway proxy via: Authorization header, ?auth_token= query, or gw_session cookie.
     On success with auth_token query param, sets a session cookie so sub-resource requests work."""

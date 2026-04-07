@@ -26,5 +26,9 @@ export GATEWAY_REGION="${GATEWAY_REGION:-${SSM_REGION}}"
 export CONSOLE_PORT="${CONSOLE_PORT:-8099}"
 export TENANT_ROUTER_URL="${TENANT_ROUTER_URL:-http://localhost:8090}"
 
+# DynamoDB config — table name MUST equal STACK_NAME (IAM policy scoped to table/${StackName})
+export DYNAMODB_TABLE="${DYNAMODB_TABLE:-${STACK_NAME}}"
+export DYNAMODB_REGION="${DYNAMODB_REGION:-${AWS_REGION}}"
+
 cd /opt/admin-console/server
 exec /opt/admin-venv/bin/python main.py

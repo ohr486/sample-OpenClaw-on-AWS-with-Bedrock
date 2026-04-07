@@ -295,6 +295,19 @@ function GatewayConsoleButton() {
         const gwUrl = data.directUrl || `/api/v1/portal/gateway/ui/`;
         const url = `${gwUrl}?token=${data.gatewayToken}${data.dashboardToken ? '#token=' + data.dashboardToken : ''}`;
         window.open(url, '_blank');
+        // Auto-approve device pairing: the browser creates a pending pairing
+        // request when it connects to the Gateway Console. Poll to approve it.
+        const approveHeaders = { 'Authorization': `Bearer ${jwt}` };
+        for (let i = 0; i < 5; i++) {
+          await new Promise(r => setTimeout(r, 3000));
+          try {
+            const ar = await fetch('/api/v1/portal/gateway/approve-pairing', {
+              method: 'POST', headers: approveHeaders,
+            });
+            const ad = await ar.json();
+            if (ad.approved) break;
+          } catch {}
+        }
       } else {
         setError(data.reason || 'Gateway Console not available');
       }

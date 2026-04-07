@@ -13,7 +13,7 @@ import boto3
 from boto3.dynamodb.conditions import Key, Attr
 from botocore.exceptions import ClientError
 
-TABLE_NAME = os.environ.get("DYNAMODB_TABLE", "openclaw-enterprise")
+TABLE_NAME = os.environ.get("DYNAMODB_TABLE") or os.environ.get("STACK_NAME", "openclaw-enterprise")
 AWS_REGION = os.environ.get("AWS_REGION", "us-east-2")
 ORG_PK = "ORG#acme"
 
