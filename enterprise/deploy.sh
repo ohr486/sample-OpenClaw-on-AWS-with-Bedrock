@@ -124,6 +124,16 @@ if [ "$CLI_MAJOR" -lt 2 ] || { [ "$CLI_MAJOR" -eq 2 ] && [ "$CLI_MINOR" -lt 27 ]
 fi
 success "AWS CLI $CLI_VERSION"
 
+# Validate Bedrock model access (non-blocking warning)
+info "  Checking Bedrock model access for $MODEL..."
+if aws bedrock get-foundation-model --model-identifier "$MODEL" --region "$REGION" \
+    --query 'modelDetails.modelId' --output text &>/dev/null; then
+  success "  Model $MODEL accessible"
+else
+  warn "Model $MODEL may not be enabled. Go to Bedrock console → Model access → Enable it."
+  warn "Deployment will continue, but agents may fail to respond until model access is granted."
+fi
+
 # Docker build runs on the gateway EC2 (ARM64 Graviton), not locally.
 # No local Docker required.
 
@@ -334,11 +344,24 @@ export S3_BUCKET
 aws s3 sync "$SCRIPT_DIR/agent-container/templates/" \
   "s3://${S3_BUCKET}/_shared/templates/" --region "$REGION" --quiet
 
-# Upload global SOUL if exists
+# Upload global SOUL if exists (legacy path)
 GLOBAL_SOUL="$SCRIPT_DIR/agent-container/templates/default.md"
 [ -f "$GLOBAL_SOUL" ] && \
   aws s3 cp "$GLOBAL_SOUL" "s3://${S3_BUCKET}/_shared/soul/global/SOUL.md" \
     --region "$REGION" --quiet
+
+# Upload full SOUL templates (global: SOUL.md, AGENTS.md, TOOLS.md + per-position)
+SOUL_TEMPLATES="$SCRIPT_DIR/admin-console/server/soul-templates"
+if [ -d "$SOUL_TEMPLATES/global" ]; then
+  aws s3 sync "$SOUL_TEMPLATES/global/" \
+    "s3://${S3_BUCKET}/_shared/soul/global/" --region "$REGION" --quiet
+  info "  Global SOUL templates uploaded (SOUL.md, AGENTS.md, TOOLS.md)"
+fi
+if [ -d "$SOUL_TEMPLATES/positions" ]; then
+  aws s3 sync "$SOUL_TEMPLATES/positions/" \
+    "s3://${S3_BUCKET}/_shared/soul/positions/" --region "$REGION" --quiet
+  info "  Position SOUL templates uploaded ($(ls -d "$SOUL_TEMPLATES/positions"/*/ 2>/dev/null | wc -l | tr -d ' ') positions)"
+fi
 
 success "Templates uploaded to s3://${S3_BUCKET}/"
 
