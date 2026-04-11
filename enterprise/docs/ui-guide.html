@@ -483,6 +483,35 @@ EMP#{emp_id}   — id, name, positionId, departmentId, agentId, channels[], agen
 <p><code>_bindingCache</code> Map，60 秒 TTL。pair-complete 后显式清除缓存，下条消息立即路由。</p>
 <h4>⚠️ DM 策略必须为 "Open"</h4>
 <p>如果 Gateway DM 策略是"Pairing"，Gateway 在消息到达 H2 Proxy 之前就阻止未识别用户。H2 Proxy 永远看不到消息 → 配对流程永远不触发 → 员工卡住。"Open"模式让所有消息通过到 H2 Proxy，由 H2 Proxy 在更智能的层级强制执行绑定检查。</p>
+`)
+    + deep(`
+<h4>Data Sources</h4>
+<p>Dashboard queries 11 API endpoints in parallel: departments, positions, employees, agents, sessions, audit entries, bindings, usage summary, usage trend, approvals, alert rules. All read from DynamoDB single-table (PK=ORG#acme).</p>
+<h4>Setup Checklist Logic</h4>
+<div class="code">setupDone = {
+  departments: count > 0,
+  positions: count > 0,
+  employees: count > 0,
+  agents: count > 0,
+  channels: configured_channels > 0
+}
+// Shows 5 steps; all must be > 0 to mark complete</div>
+<h4>Quality Score</h4>
+<p>Average of all agents' <code>qualityScore</code> field. Calculated from: satisfaction (turns-based), tool success rate, response time, compliance score, completion rate. Stored in AGENT# DynamoDB record.</p>
+`,`
+<h4>数据来源</h4>
+<p>仪表盘并行查询 11 个 API 端点：部门、岗位、员工、Agent、会话、审计条目、绑定、用量汇总、用量趋势、审批、告警规则。全部从 DynamoDB 单表读取（PK=ORG#acme）。</p>
+<h4>配置清单逻辑</h4>
+<div class="code">setupDone = {
+  departments: 数量 > 0,
+  positions: 数量 > 0,
+  employees: 数量 > 0,
+  agents: 数量 > 0,
+  channels: 已配置通道 > 0
+}
+// 5 步全部 > 0 才标记完成</div>
+<h4>质量分</h4>
+<p>所有 Agent 的 <code>qualityScore</code> 平均值。由满意度、工具成功率、响应时间、合规分、完成率计算。存储在 AGENT# DynamoDB 记录中。</p>
 `); }},
 
 org: { en:{title:'Organization Management',sub:'Departments → Positions → Employees — the foundation of agent governance.'}, zh:{title:'组织架构管理',sub:'部门 → 岗位 → 员工 — Agent 治理的基础。'}, body(){ return intent('The organization module has three layers mirroring your real company. <strong>Departments</strong> = isolation boundaries. <strong>Positions</strong> = Agent DNA (SOUL + skills + tools + permissions). <strong>Employees</strong> = auto-provisioned. Assign position → agent created with everything inherited. You manage <strong>10 positions instead of 500 agents</strong>.','组织模块有三层映射真实公司。<strong>部门</strong> = 隔离边界。<strong>岗位</strong> = Agent DNA（SOUL + 技能 + 工具 + 权限）。<strong>员工</strong> = 自动配置。分配岗位 → Agent 自动创建并继承一切。您管理<strong>10 个岗位而非 500 个 Agent</strong>。') + sectionHead(t('Departments','部门')) + note('info','📍',t('<strong>Organization → Departments.</strong> Hierarchy tree with headcount. Managers only see their department scope.','<strong>Organization → Departments。</strong>层级树含人数。经理只看到自己部门范围。')) + sectionHead(t('Positions — Agent DNA','岗位 — Agent DNA')) + steps(t('Operations:','操作：'),t(['Organization → Positions. Each shows member count + SOUL status.','Click position → SOUL tab → write role behavior.','Skills & Tools tab → assign tool permissions per role.','Positions with "Empty" SOUL need attention.'],['Organization → Positions。每个显示成员数 + SOUL 状态。','点击岗位 → SOUL 标签 → 编写角色行为。','Skills & Tools 标签 → 分配各角色工具权限。','标记"Empty"SOUL 的岗位需要配置。'])) + sectionHead(t('Employees — Auto-Provisioning','员工 — 自动配置')) + steps(t('Operations:','操作：'),t(['Organization → Employees. All with position, channels, agent status.','Add Employee → select position → auto-provisioned (Serverless).','Each gets 1:1 agent binding. Upgrade to Always-on later if needed.','Click employee → edit personal SOUL, view IM channels.'],['Organization → Employees。显示岗位、通道、Agent 状态。','添加员工 → 选择岗位 → 自动配置（Serverless）。','每个获得 1:1 Agent 绑定。需要时可升级为 Always-on。','点击员工 → 编辑个人 SOUL，查看 IM 通道。'])) + note('tip','💡',t('<strong>Value:</strong> 50 new hires → assign to position → 50 agents instantly with correct SOUL, skills, permissions. Zero manual config.','<strong>价值：</strong>50 名新员工 → 分配岗位 → 50 个 Agent 立即拥有正确的 SOUL、技能、权限。零手动配置。')); }},
@@ -612,11 +641,101 @@ read .personal_soul_backup.md (original!) → merge fresh
 </ul>
 `); }},
 
-agents: { en:{title:'Agent Factory',sub:'Fleet management — status, models, quality, deploy mode.'}, zh:{title:'Agent 工厂',sub:'车队管理 — 状态、模型、质量、部署模式。'}, body(){ return intent('Like a <strong>car dealership inventory</strong>: every agent\'s status, model, quality score, deployment mode. Set Bedrock models per position — <strong>executives use Claude Opus, interns use Nova Lite</strong>.','像<strong>汽车库存系统</strong>：每个 Agent 的状态、模型、质量分、部署模式。按岗位设置模型 — <strong>高管用 Claude Opus，实习生用 Nova Lite</strong>。') + note('info','📍',t('<strong>Navigate:</strong> Agent Factory. 20 agents with sortable columns. Click → SOUL editor, session history, skill list.','<strong>导航：</strong>Agent Factory。20 个 Agent，可排序。点击 → SOUL 编辑器、会话历史、技能列表。')); }},
+agents: { en:{title:'Agent Factory',sub:'Fleet management — status, models, quality, deploy mode.'}, zh:{title:'Agent 工厂',sub:'车队管理 — 状态、模型、质量、部署模式。'}, body(){ return intent('Like a <strong>car dealership inventory</strong>: every agent\'s status, model, quality score, deployment mode. Set Bedrock models per position — <strong>executives use Claude Opus, interns use Nova Lite</strong>.','像<strong>汽车库存系统</strong>：每个 Agent 的状态、模型、质量分、部署模式。按岗位设置模型 — <strong>高管用 Claude Opus，实习生用 Nova Lite</strong>。') + note('info','📍',t('<strong>Navigate:</strong> Agent Factory. 20 agents with sortable columns. Click → SOUL editor, session history, skill list.','<strong>导航：</strong>Agent Factory。20 个 Agent，可排序。点击 → SOUL 编辑器、会话历史、技能列表。'))
+    + deep(`
+<h4>DynamoDB AGENT# Schema</h4>
+<div class="code">SK: AGENT#{agent_id}
+Fields: id, name, employeeId, positionId, channels[], skills[],
+        status (active/idle), soulVersions{global,position,personal},
+        deployMode (serverless/always-on-ecs), qualityScore, createdAt</div>
+<h4>Agent Creation (org.py → _auto_provision_employee)</h4>
+<p>1. Create AGENT# → 2. Create BIND# (1:1) → 3. Seed S3 workspace (IDENTITY.md, MEMORY.md, USER.md) → 4. Update EMP# with agentId → 5. Create AUDIT# entry. All automatic on employee creation.</p>
+<h4>Deploy Mode</h4>
+<p><code>serverless</code> = AgentCore Firecracker microVM (default, pay-per-session). <code>always-on-ecs</code> = ECS Fargate container with EFS persistent storage (instant response, ~$50/month).</p>
+`,`
+<h4>DynamoDB AGENT# 表结构</h4>
+<div class="code">SK: AGENT#{agent_id}
+字段: id, name, employeeId, positionId, channels[], skills[],
+      status (active/idle), soulVersions{global,position,personal},
+      deployMode (serverless/always-on-ecs), qualityScore, createdAt</div>
+<h4>Agent 创建（org.py → _auto_provision_employee）</h4>
+<p>1. 创建 AGENT# → 2. 创建 BIND#（1:1）→ 3. 种子 S3 工作区（IDENTITY.md, MEMORY.md, USER.md）→ 4. 更新 EMP# 的 agentId → 5. 创建 AUDIT# 条目。员工创建时全自动。</p>
+<h4>部署模式</h4>
+<p><code>serverless</code> = AgentCore Firecracker 微虚拟机（默认，按会话付费）。<code>always-on-ecs</code> = ECS Fargate 容器 + EFS 持久存储（即时响应，约 $50/月）。</p>
+`); }},
 
-skills: { en:{title:'Skill Market',sub:'Apps for agents — browse, prerequisites, assign.'}, zh:{title:'技能市场',sub:'Agent 的应用 — 浏览、前置条件、分配。'}, body(){ return intent('Skills are <strong>apps on a phone</strong>. Agents have basic conversation; skills extend: web search, CRM, SAP. <strong>Assigned to positions, not individuals.</strong> Install for "SA" → all 20 SA agents get it. AWS-native skills = zero config (IAM role).','技能是<strong>手机应用</strong>。Agent 自带对话；技能扩展：搜索、CRM、SAP。<strong>分配给岗位而非个人。</strong>为"SA"安装 → 20 个 SA Agent 都获得。AWS 原生技能 = 零配置（IAM 角色）。') + steps(t('Assign skills:','分配技能：'),t(['Skill Market → browse 26 skills (Layer 1 built-in + Layer 2 S3).','Click skill → check prerequisites (API key or IAM role).','Select position → "Assign". All agents in that position get it.','AWS-native (bedrock-kb-search, nova-canvas) = zero config.'],['技能市场 → 浏览 26 个技能（Layer 1 内置 + Layer 2 S3）。','点击技能 → 检查前置条件（API 密钥或 IAM 角色）。','选择岗位 → "分配"。该岗位所有 Agent 获得。','AWS 原生（bedrock-kb-search、nova-canvas）= 零配置。'])); }},
+skills: { en:{title:'Skill Market',sub:'Apps for agents — browse, prerequisites, assign.'}, zh:{title:'技能市场',sub:'Agent 的应用 — 浏览、前置条件、分配。'}, body(){ return intent('Skills are <strong>apps on a phone</strong>. Agents have basic conversation; skills extend: web search, CRM, SAP. <strong>Assigned to positions, not individuals.</strong> Install for "SA" → all 20 SA agents get it. AWS-native skills = zero config (IAM role).','技能是<strong>手机应用</strong>。Agent 自带对话；技能扩展：搜索、CRM、SAP。<strong>分配给岗位而非个人。</strong>为"SA"安装 → 20 个 SA Agent 都获得。AWS 原生技能 = 零配置（IAM 角色）。') + steps(t('Assign skills:','分配技能：'),t(['Skill Market → browse 26 skills (Layer 1 built-in + Layer 2 S3).','Click skill → check prerequisites (API key or IAM role).','Select position → "Assign". All agents in that position get it.','AWS-native (bedrock-kb-search, nova-canvas) = zero config.'],['技能市场 → 浏览 26 个技能（Layer 1 内置 + Layer 2 S3）。','点击技能 → 检查前置条件（API 密钥或 IAM 角色）。','选择岗位 → "分配"。该岗位所有 Agent 获得。','AWS 原生（bedrock-kb-search、nova-canvas）= 零配置。']))
+    + deep(`
+<h4>3-Layer Skill Architecture</h4>
+<table class="tbl">
+<tr><th>Layer</th><th>Source</th><th>Loaded When</th><th>Example</th></tr>
+<tr><td>L1 Built-in</td><td>Docker image</td><td>Always available</td><td>jina-reader, deep-research, web-search</td></tr>
+<tr><td>L2 S3 Hot-load</td><td>s3://{bucket}/_shared/skills/</td><td>Container startup (skill_loader.py)</td><td>crm-query, sap-connector, excel-gen</td></tr>
+<tr><td>L3 Bundles</td><td>SSM catalog → S3 tar.gz</td><td>Container startup</td><td>Custom enterprise skills</td></tr>
+</table>
+<h4>Skill Manifest (skill.json)</h4>
+<div class="code">{
+  "name": "crm-query",
+  "requires": { "env": ["CRM_API_KEY"] },
+  "permissions": {
+    "allowedRoles": ["sales", "csm", "management"],
+    "blockedRoles": []
+  }
+}</div>
+<h4>API Key Injection</h4>
+<p>SSM path: <code>/openclaw/{stack}/skill-keys/{skill_name}/{env_var}</code>. Global keys: <code>_global/{env_var}</code>. Written to <code>/tmp/skill_env.sh</code> as <code>export KEY=VALUE</code> — loaded by server.py before each invocation.</p>
+`,`
+<h4>三层技能架构</h4>
+<table class="tbl">
+<tr><th>层</th><th>来源</th><th>加载时机</th><th>示例</th></tr>
+<tr><td>L1 内置</td><td>Docker 镜像</td><td>始终可用</td><td>jina-reader, deep-research, web-search</td></tr>
+<tr><td>L2 S3 热加载</td><td>s3://{bucket}/_shared/skills/</td><td>容器启动（skill_loader.py）</td><td>crm-query, sap-connector, excel-gen</td></tr>
+<tr><td>L3 预构建包</td><td>SSM 目录 → S3 tar.gz</td><td>容器启动</td><td>企业自定义技能</td></tr>
+</table>
+<h4>技能清单 (skill.json)</h4>
+<div class="code">{
+  "name": "crm-query",
+  "requires": { "env": ["CRM_API_KEY"] },
+  "permissions": {
+    "allowedRoles": ["sales", "csm", "management"]
+  }
+}</div>
+<h4>API Key 注入</h4>
+<p>SSM 路径：<code>/openclaw/{stack}/skill-keys/{skill_name}/{env_var}</code>。写入 <code>/tmp/skill_env.sh</code> 为 <code>export KEY=VALUE</code>——server.py 在每次调用前加载。</p>
+`); }},
 
-kb: { en:{title:'Knowledge Base',sub:'Company library — upload, categorize, assign.'}, zh:{title:'知识库',sub:'公司图书馆 — 上传、分类、分配。'}, body(){ return intent('KB gives agents access to <strong>proprietary information</strong> — product docs, HR policies, contracts. Without KB, agents use only training data. Assignment model: <strong>library card system</strong> — you choose which roles access which libraries.','知识库让 Agent 访问<strong>专有信息</strong> — 产品文档、HR 政策、合同。没有 KB 只用训练数据。分配模型：<strong>借阅证系统</strong> — 您选择哪些角色访问哪些图书馆。') + note('info','📍',t('<strong>Navigate:</strong> Knowledge Base. Upload docs, organize categories, assign via Assignments tab.','<strong>导航：</strong>Knowledge Base。上传文档，分类，通过 Assignments 标签分配。')); }},
+kb: { en:{title:'Knowledge Base',sub:'Company library — upload, categorize, assign.'}, zh:{title:'知识库',sub:'公司图书馆 — 上传、分类、分配。'}, body(){ return intent('KB gives agents access to <strong>proprietary information</strong> — product docs, HR policies, contracts. Without KB, agents use only training data. Assignment model: <strong>library card system</strong> — you choose which roles access which libraries.','知识库让 Agent 访问<strong>专有信息</strong> — 产品文档、HR 政策、合同。没有 KB 只用训练数据。分配模型：<strong>借阅证系统</strong> — 您选择哪些角色访问哪些图书馆。') + note('info','📍',t('<strong>Navigate:</strong> Knowledge Base. Upload docs, organize categories, assign via Assignments tab.','<strong>导航：</strong>Knowledge Base。上传文档，分类，通过 Assignments 标签分配。'))
+    + deep(`
+<h4>DynamoDB KB# Schema</h4>
+<div class="code">SK: KB#{kb_id}
+Fields: id, name, scope (global|department), docCount,
+        s3Prefix ("_shared/knowledge/{category}/"), status</div>
+<h4>KB Assignment (CONFIG#kb-assignments)</h4>
+<div class="code">{
+  "positionKBs": {
+    "pos-sa": ["kb-policies","kb-onboarding","kb-arch"],
+    "pos-fa": ["kb-policies","kb-onboarding","kb-finance"]
+  },
+  "employeeKBs": { "emp-carol": ["kb-finance","kb-legal"] }
+}</div>
+<h4>KB Injection at Runtime</h4>
+<p>server.py (line 619-709): reads CONFIG#kb-assignments → downloads S3 files to <code>/workspace/knowledge/{kb_id}/</code> → appends KB paths to SOUL.md. Special: org-directory KB is <strong>inlined directly</strong> into SOUL.md (not just a path reference).</p>
+`,`
+<h4>DynamoDB KB# 表结构</h4>
+<div class="code">SK: KB#{kb_id}
+字段: id, name, scope (global|department), docCount,
+      s3Prefix ("_shared/knowledge/{category}/"), status</div>
+<h4>KB 分配 (CONFIG#kb-assignments)</h4>
+<div class="code">{
+  "positionKBs": {
+    "pos-sa": ["kb-policies","kb-onboarding","kb-arch"],
+    "pos-fa": ["kb-policies","kb-onboarding","kb-finance"]
+  },
+  "employeeKBs": { "emp-carol": ["kb-finance","kb-legal"] }
+}</div>
+<h4>运行时 KB 注入</h4>
+<p>server.py（行 619-709）：读取 CONFIG#kb-assignments → 从 S3 下载文件到 <code>/workspace/knowledge/{kb_id}/</code> → KB 路径追加到 SOUL.md。特别：org-directory KB <strong>直接内联</strong>到 SOUL.md（不只是路径引用）。</p>
+`); }},
 
 im: { en:{title:'IM Channels — Last Mile',sub:'Connect IM platforms for employee chat.'}, zh:{title:'IM 渠道 — 最后一公里',sub:'连接 IM 平台让员工聊天。'}, body(){ return intent('IM channels = <strong>last mile</strong>. Agents meet employees where they are (Feishu, Telegram, Discord, Slack). Admin configures once via Gateway UI. Employees self-pair via Portal. <strong>DM access mode MUST be "Open"</strong> — H2 Proxy handles identity, not Gateway.','IM 渠道 = <strong>最后一公里</strong>。Agent 在员工已有平台交流（飞书、Telegram、Discord、Slack）。管理员在 Gateway UI 配置一次。员工通过门户自助配对。<strong>DM 访问模式必须选 "Open"</strong> — H2 Proxy 处理身份验证。') + steps(t('Setup:','设置：'),t(['Port-forward to Gateway UI (port 18789)','Channels → Add Feishu/Telegram/Discord','<strong>DM access = "Open"</strong> (not Pairing!)','Admin Console → IM Channels → Refresh → "Bot Active"','Employees: Portal → Connect IM → self-pair'],['端口转发到 Gateway UI（端口 18789）','Channels → 添加飞书/Telegram/Discord','<strong>DM 访问 = "Open"</strong>（不是 Pairing！）','Admin Console → IM Channels → 刷新 → "Bot Active"','员工：Portal → Connect IM → 自助配对'])) + note('warn','⚠️',t('<strong>Critical:</strong> If DM policy is "Pairing", employees get blocked. H2 Proxy does binding check — Gateway-level pairing is unnecessary for enterprise.','<strong>关键：</strong>如果 DM 策略是"Pairing"，员工会被阻止。H2 Proxy 做绑定检查 — 企业版不需要 Gateway 层配对。')); }},
 
@@ -654,19 +773,140 @@ sec: { en:{title:'Security Center',sub:'Defense in depth — 4 independent layer
   → 返回: { "profile": "sa", "tools": ["web_search","shell","browser","file"] }</div>
 `); }},
 
-monitor: { en:{title:'Monitor Center',sub:'Live sessions, agent health, alerts.'}, zh:{title:'监控中心',sub:'实时会话、Agent 健康、告警。'}, body(){ return intent('Without monitoring = <strong>flying blind</strong>. Live sessions, CloudWatch trends, quality scores. Alert rules = <strong>know before users do</strong>.','没有监控 = <strong>盲飞</strong>。实时会话、CloudWatch 趋势、质量分。告警规则 = <strong>在用户之前发现问题</strong>。') + note('info','📍',t('<strong>Navigate:</strong> Monitor → tabs: Live Sessions, Agent Health, Alert Rules, Runtime Events.','<strong>导航：</strong>Monitor → 标签：Live Sessions、Agent Health、Alert Rules、Runtime Events。')); }},
+monitor: { en:{title:'Monitor Center',sub:'Live sessions, agent health, alerts.'}, zh:{title:'监控中心',sub:'实时会话、Agent 健康、告警。'}, body(){ return intent('Without monitoring = <strong>flying blind</strong>. Live sessions, CloudWatch trends, quality scores. Alert rules = <strong>know before users do</strong>.','没有监控 = <strong>盲飞</strong>。实时会话、CloudWatch 趋势、质量分。告警规则 = <strong>在用户之前发现问题</strong>。') + note('info','📍',t('<strong>Navigate:</strong> Monitor → tabs: Live Sessions, Agent Health, Alert Rules, Runtime Events.','<strong>导航：</strong>Monitor → 标签：Live Sessions、Agent Health、Alert Rules、Runtime Events。'))
+    + deep(`
+<h4>Live Sessions Data Sources</h4>
+<p>Combines DynamoDB SESSION# records + CloudWatch Logs query. CloudWatch filter: <code>event_type = "agent_invocation"</code>, 30-min window. Sessions active if invoked within 15 min.</p>
+<h4>Session Status Logic</h4>
+<div class="code">lastActive age:
+  < 15 min  → "active" (green)
+  < 60 min  → "idle" (yellow)  
+  >= 60 min → "completed" (gray)</div>
+<h4>Alert Rules</h4>
+<p>8 pre-configured: crash loop, auth expired, memory bloat, context window limit, budget overrun, PII in output, SOUL version drift, unbound employees.</p>
+<h4>Admin Takeover</h4>
+<p>Admin writes SSM <code>/openclaw/{stack}/sessions/{id}/takeover</code> → agent skips auto-reply → admin sends messages directly via <code>/api/v1/monitor/sessions/{id}/send</code>.</p>
+`,`
+<h4>实时会话数据来源</h4>
+<p>结合 DynamoDB SESSION# 记录 + CloudWatch Logs 查询。CloudWatch 过滤：<code>event_type = "agent_invocation"</code>，30 分钟窗口。15 分钟内有调用则为活跃。</p>
+<h4>会话状态逻辑</h4>
+<div class="code">lastActive 时间差：
+  < 15 分钟  → "active"（绿色）
+  < 60 分钟  → "idle"（黄色）
+  >= 60 分钟 → "completed"（灰色）</div>
+<h4>告警规则</h4>
+<p>8 条预配置：崩溃循环、认证过期、内存膨胀、上下文窗口极限、预算超支、输出含 PII、SOUL 版本漂移、未绑定员工。</p>
+<h4>管理员接管</h4>
+<p>管理员写入 SSM <code>/openclaw/{stack}/sessions/{id}/takeover</code> → agent 跳过自动回复 → 管理员通过 <code>/api/v1/monitor/sessions/{id}/send</code> 直接发送消息。</p>
+`); }},
 
-audit: { en:{title:'Audit Center',sub:'Complete audit trail.'}, zh:{title:'审计中心',sub:'完整审计日志。'}, body(){ return intent('Every invocation, guardrail block, permission denial logged. Essential for <strong>compliance</strong> — trace exactly what happened, when, for whom.','每次调用、护栏拦截、权限拒绝都被记录。对<strong>合规</strong>至关重要 — 精确追踪发生了什么、何时、对谁。') + note('info','📍',t('<strong>Navigate:</strong> Audit Center. Filter by event type, employee, date. Export CSV.','<strong>导航：</strong>Audit Center。按事件类型、员工、日期筛选。导出 CSV。')); }},
+audit: { en:{title:'Audit Center',sub:'Complete audit trail.'}, zh:{title:'审计中心',sub:'完整审计日志。'}, body(){ return intent('Every invocation, guardrail block, permission denial logged. Essential for <strong>compliance</strong> — trace exactly what happened, when, for whom.','每次调用、护栏拦截、权限拒绝都被记录。对<strong>合规</strong>至关重要 — 精确追踪发生了什么、何时、对谁。') + note('info','📍',t('<strong>Navigate:</strong> Audit Center. Filter by event type, employee, date. Export CSV.','<strong>导航：</strong>Audit Center。按事件类型、员工、日期筛选。导出 CSV。'))
+    + deep(`
+<h4>Audit Event Types</h4>
+<table class="tbl">
+<tr><th>Type</th><th>Written By</th><th>When</th></tr>
+<tr><td>agent_invocation</td><td>server.py (AgentCore container)</td><td>Every agent response</td></tr>
+<tr><td>guardrail_block</td><td>server.py _apply_guardrail()</td><td>Bedrock Guardrail blocks content</td></tr>
+<tr><td>permission_denied</td><td>permissions.py</td><td>Tool access denied by Plan A</td></tr>
+<tr><td>admin_action</td><td>Admin Console routers</td><td>SOUL edit, skill assign, config change</td></tr>
+</table>
+<h4>DynamoDB AUDIT# Schema</h4>
+<div class="code">SK: AUDIT#{audit_id}  (audit_id = "aud-{timestamp_ms}")
+Fields: timestamp, eventType, actorId, actorName, targetType,
+        targetId, channel, detail, status, durationMs, model</div>
+`,`
+<h4>审计事件类型</h4>
+<table class="tbl">
+<tr><th>类型</th><th>写入方</th><th>触发时机</th></tr>
+<tr><td>agent_invocation</td><td>server.py（AgentCore 容器）</td><td>每次 Agent 响应</td></tr>
+<tr><td>guardrail_block</td><td>server.py _apply_guardrail()</td><td>Bedrock 护栏拦截内容</td></tr>
+<tr><td>permission_denied</td><td>permissions.py</td><td>Plan A 拒绝工具访问</td></tr>
+<tr><td>admin_action</td><td>Admin Console 路由</td><td>SOUL 编辑、技能分配、配置变更</td></tr>
+</table>
+<h4>DynamoDB AUDIT# 表结构</h4>
+<div class="code">SK: AUDIT#{audit_id}  (audit_id = "aud-{时间戳毫秒}")
+字段: timestamp, eventType, actorId, actorName, targetType,
+      targetId, channel, detail, status, durationMs, model</div>
+`); }},
 
-usage: { en:{title:'Usage & Cost',sub:'Token tracking, budgets, optimization.'}, zh:{title:'用量与成本',sub:'Token 追踪、预算、优化。'}, body(){ return intent('Cost transparency builds trust. Per-agent/position/department tracking. Budget alerts before spikes. Model hierarchy = key cost lever.','成本透明建立信任。按 Agent/岗位/部门追踪。成本飙升前预算告警。模型层级 = 关键成本杠杆。') + note('info','📍',t('<strong>Navigate:</strong> Usage & Cost. Daily/weekly/monthly trends. Drill down by employee or position.','<strong>导航：</strong>Usage & Cost。日/周/月趋势。按员工或岗位下钻。')); }},
+usage: { en:{title:'Usage & Cost',sub:'Token tracking, budgets, optimization.'}, zh:{title:'用量与成本',sub:'Token 追踪、预算、优化。'}, body(){ return intent('Cost transparency builds trust. Per-agent/position/department tracking. Budget alerts before spikes. Model hierarchy = key cost lever.','成本透明建立信任。按 Agent/岗位/部门追踪。成本飙升前预算告警。模型层级 = 关键成本杠杆。') + note('info','📍',t('<strong>Navigate:</strong> Usage & Cost. Daily/weekly/monthly trends. Drill down by employee or position.','<strong>导航：</strong>Usage & Cost。日/周/月趋势。按员工或岗位下钻。'))
+    + deep(`
+<h4>DynamoDB USAGE# Schema</h4>
+<div class="code">SK: USAGE#{emp_id}#{date}  (e.g. USAGE#emp-mike#2026-04-10)
+Fields: date, agentId, model, inputTokens, outputTokens,
+        requests (atomic increment), cost (Decimal)</div>
+<h4>Cost Calculation</h4>
+<p>Nova 2 Lite: input $0.30/1M + output $2.50/1M tokens. Written by server.py's <code>_write_usage_to_dynamodb()</code> in background thread after each response. Atomic DynamoDB UpdateItem with ADD expressions.</p>
+`,`
+<h4>DynamoDB USAGE# 表结构</h4>
+<div class="code">SK: USAGE#{emp_id}#{date}  (如 USAGE#emp-mike#2026-04-10)
+字段: date, agentId, model, inputTokens, outputTokens,
+      requests（原子递增）, cost（Decimal）</div>
+<h4>成本计算</h4>
+<p>Nova 2 Lite：输入 $0.30/1M + 输出 $2.50/1M tokens。由 server.py 的 <code>_write_usage_to_dynamodb()</code> 在后台线程写入。使用 DynamoDB UpdateItem 的 ADD 原子操作。</p>
+`); }},
 
-playground: { en:{title:'Playground — AI Staging',sub:'Test as any employee before rollout.'}, zh:{title:'Playground — AI 预发布',sub:'发布前模拟任何员工测试。'}, body(){ return intent('Test new SOUL/skills as a specific employee <strong>before rolling out to 100 agents</strong>. See assembled workspace files. Debug behavior issues before employees encounter them. Live mode = real AgentCore.','在推送给 100 个 Agent 之前，<strong>模拟特定员工测试</strong>新 SOUL/技能。查看组装的工作区文件。在员工遇到问题之前调试。Live 模式 = 真实 AgentCore。') + steps(t('Testing flow:','测试流程：'),t(['Select employee (e.g. Carol — Finance Analyst)','Mode: Live (AgentCore) or Simulate','Send "who are you?" → verify identity','Send "run git status" as Finance → refused (no shell)','Switch to Ryan (SDE) → executes (SDE has shell)'],['选择员工（如 Carol — 财务分析师）','模式：Live（AgentCore）或 Simulate','发送"who are you?" → 验证身份','以财务身份"run git status" → 被拒（无 shell）','切换 Ryan（SDE） → 执行（SDE 有 shell）'])); }},
+playground: { en:{title:'Playground — AI Staging',sub:'Test as any employee before rollout.'}, zh:{title:'Playground — AI 预发布',sub:'发布前模拟任何员工测试。'}, body(){ return intent('Test new SOUL/skills as a specific employee <strong>before rolling out to 100 agents</strong>. See assembled workspace files. Debug behavior issues before employees encounter them. Live mode = real AgentCore.','在推送给 100 个 Agent 之前，<strong>模拟特定员工测试</strong>新 SOUL/技能。查看组装的工作区文件。在员工遇到问题之前调试。Live 模式 = 真实 AgentCore。') + steps(t('Testing flow:','测试流程：'),t(['Select employee (e.g. Carol — Finance Analyst)','Mode: Live (AgentCore) or Simulate','Send "who are you?" → verify identity','Send "run git status" as Finance → refused (no shell)','Switch to Ryan (SDE) → executes (SDE has shell)'],['选择员工（如 Carol — 财务分析师）','模式：Live（AgentCore）或 Simulate','发送"who are you?" → 验证身份','以财务身份"run git status" → 被拒（无 shell）','切换 Ryan（SDE） → 执行（SDE 有 shell）']))
+    + deep(`
+<h4>Routing Paths</h4>
+<div class="code">Admin IT Assistant (emp_id="admin"):
+  → _admin_assistant_direct() → openclaw CLI on EC2 → direct Bedrock (PATH B)
+  → No AgentCore, no tenant routing
+
+Employee agents (Live mode):
+  → POST localhost:8090/route { channel:"playground", user_id:emp_id }
+  → Tenant Router → AgentCore VM (tenant_id prefix: "pgnd__")
+  → Playground sessions are read-only: no memory write-back to S3</div>
+<h4>Workspace Inspection</h4>
+<p>The Pipeline tab shows: tenant_id, permission profile, Plan A/E results. Employee Files tab shows: SOUL.md (merged), USER.md, MEMORY.md — directly from AgentCore's assembled workspace.</p>
+`,`
+<h4>路由路径</h4>
+<div class="code">管理员 IT 助手 (emp_id="admin"):
+  → _admin_assistant_direct() → EC2 上 openclaw CLI → 直连 Bedrock (PATH B)
+  → 无 AgentCore，无租户路由
+
+员工 Agent（Live 模式）：
+  → POST localhost:8090/route { channel:"playground", user_id:emp_id }
+  → Tenant Router → AgentCore VM（tenant_id 前缀："pgnd__"）
+  → Playground 会话只读：不回写 memory 到 S3</div>
+<h4>工作区检查</h4>
+<p>Pipeline 标签显示：tenant_id、权限配置、Plan A/E 结果。Employee Files 标签显示：SOUL.md（已合并）、USER.md、MEMORY.md——直接来自 AgentCore 组装的工作区。</p>
+`); }},
 
 settings: { en:{title:'Settings & System',sub:'Model config, agent config, health.'}, zh:{title:'设置与系统',sub:'模型配置、Agent 配置、健康。'}, body(){ return intent('Settings = <strong>brain configuration</strong>. Default model, position overrides, memory compaction, language. System tab: CPU/memory/disk, port status.','设置 = <strong>大脑配置</strong>。默认模型、岗位覆盖、记忆压缩、语言。System 标签：CPU/内存/磁盘、端口状态。')
     + `<table class="tbl"><tr><th>${t('Scope','范围')}</th><th>${t('Model','模型')}</th><th>${t('Cost','成本')}</th><th>${t('Use Case','场景')}</th></tr>`
     + `<tr><td><span class="badge green">Default</span></td><td>Nova 2 Lite</td><td>$0.30/1M</td><td>${t('All employees','所有员工')}</td></tr>`
     + `<tr><td><span class="badge yellow">Fallback</span></td><td>Nova Pro</td><td>$0.80/1M</td><td>${t('When default fails','默认失败时')}</td></tr>`
-    + `<tr><td><span class="badge blue">pos-exec</span></td><td>Claude Sonnet 4.6</td><td>$3.00/1M</td><td>${t('Executive tier','高管层级')}</td></tr></table>`; }},
+    + `<tr><td><span class="badge blue">pos-exec</span></td><td>Claude Sonnet 4.6</td><td>$3.00/1M</td><td>${t('Executive tier','高管层级')}</td></tr></table>`
+    + deep(`
+<h4>Model Hierarchy (CONFIG#model)</h4>
+<div class="code">{
+  "default": { "modelId": "global.amazon.nova-2-lite-v1:0" },
+  "fallback": { "modelId": "us.amazon.nova-pro-v1:0" },
+  "positionOverrides": {
+    "pos-exec": { "modelId": "global.anthropic.claude-sonnet-4-6" },
+    "pos-sa": { "modelId": "global.anthropic.claude-sonnet-4-5-..." }
+  },
+  "employeeOverrides": { "emp-ceo": { "modelId": "..." } }
+}</div>
+<p>Resolution order: employee override > position override > default. Applied at workspace assembly time by server.py — rewrites openclaw.json model ID in the microVM.</p>
+<h4>Agent Config (CONFIG#agent-config)</h4>
+<p>Per-position/employee: recentTurnsPreserve (memory compaction), compactionMode, maxTokens, language preference. Applied at assembly time.</p>
+`,`
+<h4>模型层级 (CONFIG#model)</h4>
+<div class="code">{
+  "default": { "modelId": "global.amazon.nova-2-lite-v1:0" },
+  "fallback": { "modelId": "us.amazon.nova-pro-v1:0" },
+  "positionOverrides": {
+    "pos-exec": { "modelId": "global.anthropic.claude-sonnet-4-6" },
+    "pos-sa": { "modelId": "global.anthropic.claude-sonnet-4-5-..." }
+  },
+  "employeeOverrides": { "emp-ceo": { "modelId": "..." } }
+}</div>
+<p>解析顺序：员工覆盖 > 岗位覆盖 > 默认。在工作区组装时由 server.py 应用——重写微虚拟机中的 openclaw.json 模型 ID。</p>
+<h4>Agent 配置 (CONFIG#agent-config)</h4>
+<p>按岗位/员工：recentTurnsPreserve（记忆压缩）、compactionMode、maxTokens、语言偏好。在组装时应用。</p>
+`); }},
 
 // ═══ EMPLOYEE PORTAL ═══
 'portal-chat': { en:{title:'Chat with Your Agent',sub:'Full-screen chat — knows your role, remembers conversations.'}, zh:{title:'与 Agent 对话',sub:'全屏聊天 — 了解角色，记住对话。'}, body(){ return intent('90% of your time is here. First message ~6s (cold start), then fast. Agent knows your role, has team skills, <strong>remembers previous conversations</strong>.','90% 时间在这里。首次消息约 6 秒（冷启动），之后很快。Agent 了解角色，有团队技能，<strong>记住之前的对话</strong>。') + note('info','📍',t('<strong>Portal → Chat</strong> (first item). Shows "Connected" with model name.','<strong>Portal → Chat</strong>（第一项）。显示"Connected"和模型名称。'))
