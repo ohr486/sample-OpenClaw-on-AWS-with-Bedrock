@@ -106,17 +106,21 @@ For detailed compute isolation comparison across runtimes (AgentCore vs ECS vs E
 |---------|-------------|
 | **Digital Twin** | Employee turns on a public link. Anyone with the URL can chat with their AI agent while they're away — agent responds using their SOUL, memory, and expertise. Twin sessions are isolated from the employee's main session |
 | **Always-on Agents** | Admin toggles any agent to persistent ECS Fargate mode. Enables scheduled tasks (email every 3 min), direct IM bot connections, instant response. Same image, same SOUL — just a deployment mode switch |
+| **Portal Agent Switcher** | Employees with both Serverless and Always-On agents see a sidebar toggle to switch between modes. Chat, IM binding, usage, and skills all respond to the selected agent type automatically |
+| **Dual Agent Tabs** | Agent Detail shows [Serverless] and [Always-On] tabs with independent config, status, IM channels, and audit per mode. Position change detection warns admins when container needs restart |
+| **Fargate Security Center** | Card-based Fargate management — Configure, New Template, cost summary bar, bulk Start All / Stop All. Per-tier runtime config with model, IAM role, guardrail assignment |
+| **IM Credential Forms** | Always-On agents use per-channel credential input (Feishu app-id/secret, Telegram token, Slack bot/app token) instead of shared-bot pairing. Webhook URL auto-generated and displayed |
 | **Session Storage** | AgentCore persists workspace files across microVM stop/resume cycles. No S3 re-download on session resume. Combined with `StopRuntimeSession` API for admin-triggered config refresh |
 | **Three-Layer SOUL** | Global (IT) → Position (dept admin) → Personal (employee). 3 stakeholders, 3 layers, one merged identity. Same LLM — Finance Analyst vs SDE have completely different personalities and permissions |
 | **Self-Service IM Pairing** | Employee scans QR code from Portal → connects Telegram / Feishu / Discord in 30 seconds. No IT ticket, no admin approval |
-| **Multi-Runtime Architecture** | Standard tier (Nova 2 Lite, scoped IAM) vs Executive tier (Claude Sonnet 4.6, full access). Different Docker images, different models, different IAM roles — infrastructure-level isolation |
+| **Multi-Runtime Architecture** | 4-tier system: Standard, Restricted, Engineering, Executive — each with its own model, IAM role, guardrail, and security group. Assign positions to tiers from Security Center UI |
 | **Bedrock Guardrails (L5)** | Assign any Bedrock Guardrail to a Runtime from Security Center UI. Topic denial, PII filtering, and compliance policies wrap every user input and agent output — no OpenClaw source code changes needed. Standard employees get blocked; exec tier is unrestricted. Full block audit trail in Audit Center. |
 | **Org Directory KB** | Company directory (every employee, R&R, contact, agent capabilities) seeded from org data and injected into every agent — agents know who to contact and can draft messages for you |
 | **Position → Runtime Routing** | 3-tier routing chain: employee override → position rule → default. Assign positions to runtimes from Security Center UI, propagates to all members automatically |
 | **Per-Employee Model Config** | Override model, context window, compaction settings, and response language at position OR employee level from Agent Factory → Configuration tab |
-| **IM Channel Management** | Admin sees every employee's IM connections grouped by channel — when they paired, session count, last active, one-click disconnect |
-| **Org CRUD** | Full create/edit/delete for Departments, Positions, and Employees from Admin Console. Delete is guarded: blocks if employees or agent assignments exist, prompts force-cascade delete |
-| **Security Center** | Live AWS resource browser — ECR images, IAM roles, VPC security groups with console links. Configure runtime images and IAM roles from the UI |
+| **IM Channel Management** | Admin sees every employee's IM connections grouped by channel — when they paired, session count, last active, one-click disconnect with reason field for audit trail |
+| **Org CRUD** | Full create/edit/delete for Departments, Positions, and Employees from Admin Console. Delete is guarded: blocks if employees or agent assignments exist, prompts force-cascade delete with Always-On cleanup details |
+| **Security Center** | Live AWS resource browser — ECR images, IAM roles, VPC security groups with console links. Configure runtime images, IAM roles, and Fargate tier templates from the UI |
 | **Session Storage + Memory** | Serverless: Session Storage persists workspace across microVM cycles + S3 writeback for admin visibility. Always-on: EFS workspace + Gateway compaction. Same memory across Discord, Telegram, Feishu, and Portal |
 | **Dynamic Config, Zero Redeploy** | Change model, tool permissions, SOUL content, or KB assignments → propagates via config version poll (5 min) or instant via `StopRuntimeSession`. No container rebuild, no runtime update |
 
@@ -126,7 +130,7 @@ For detailed compute isolation comparison across runtimes (AgentCore vs ECS vs E
 
 > **https://openclaw.awspsa.com**
 >
-> A real running instance with 15 departments, 12 positions, 27 employees, 29 AI agents, 5 IM channels (Telegram, Feishu, Discord + Portal), multi-runtime architecture, and always-on ECS Fargate agents — all backed by DynamoDB + S3 on AWS.
+> A real running instance with 7 departments, 11 positions, 20+ employees, 20+ AI agents, IM channels (Telegram, Feishu, Discord + Portal), 4-tier runtime architecture (Standard/Restricted/Engineering/Executive), and always-on ECS Fargate agents — all backed by DynamoDB + S3 on AWS.
 >
 > **Everything here is real.** Every button works. Every chart reads from real data. Every agent runs on Bedrock AgentCore in isolated Firecracker microVMs.
 >
@@ -233,19 +237,28 @@ Tenant Router — 3-tier routing:
 Different employee groups can be assigned to different AgentCore Runtimes, each backed by its own Docker image and IAM role:
 
 ```
-Runtime: Standard (Engineering / Sales / HR)
-  ├── Docker:  standard-agent:latest
-  │   └── Skills: web-search, jina-reader, deep-research, github-pr, slack
+Runtime: Standard (Sales / HR / Support)
   ├── Model:   Amazon Nova 2 Lite (cost-optimized)
-  └── IAM:     Own S3 workspace only · Own DynamoDB partition
+  ├── IAM:     Own S3 workspace only · Own DynamoDB partition
+  └── Guardrail: Moderate (PII filter + topic denial)
+
+Runtime: Restricted (Finance / Legal)
+  ├── Model:   DeepSeek v3.2 (balanced)
+  ├── IAM:     Own workspace + department read
+  └── Guardrail: Strict (PII + compliance + data sovereignty)
+
+Runtime: Engineering (SDE / DevOps / QA)
+  ├── Model:   Claude Sonnet 4.5 (coding-optimized)
+  ├── IAM:     Own workspace + cross-dept engineering read
+  └── Guardrail: None (full tool access)
 
 Runtime: Executive (C-Suite / Senior Leadership)
-  ├── Docker:  exec-agent:latest (all skills pre-installed)
   ├── Model:   Claude Sonnet 4.6 (highest capability)
-  └── IAM:     Full S3 access · Cross-department DynamoDB read · All Bedrock models
+  ├── IAM:     Full S3 access · Cross-department DynamoDB · All Bedrock models
+  └── Guardrail: None (unrestricted)
 ```
 
-Each runtime tier has its own Docker image, IAM role, and optional Bedrock Guardrail — see [Security](#security-hardware-level-isolation-at-every-layer) above for the full 5-layer model.
+Each runtime tier has its own IAM role and optional Bedrock Guardrail — see [Security](#security-hardware-level-isolation-at-every-layer) above for the full 5-layer model. Manage tiers from **Security Center → Runtimes** with card-based UI, Configure button, cost summary, and bulk operations.
 
 #### 3. Digital Twin — AI Availability Beyond Office Hours
 
@@ -301,10 +314,12 @@ The org directory KB (seeded via `seed_knowledge_docs.py`, refreshed by re-runni
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │  Admin Console (React + FastAPI)                                 │
-│  ├── 25+ pages: Dashboard, Agent Factory, Security Center,       │
-│  │   IM Channels, Monitor, Audit, Usage & Cost, Settings         │
-│  ├── Employee Portal: Chat, Profile, Skills, Requests, Connect   │
-│  │   IM, Digital Twin toggle                                      │
+│  ├── 30+ pages: Dashboard, Agent Factory (dual Serverless/AO     │
+│  │   tabs), Security Center (Fargate card management),            │
+│  │   IM Channels, Monitor, Audit, Usage & Cost, Settings          │
+│  ├── Employee Portal: Chat (agent mode switcher), Profile,        │
+│  │   Skills, Requests, Connect IM (pairing + credential forms),   │
+│  │   My Agents, Digital Twin toggle                                │
 │  ├── 3-role RBAC (admin / manager / employee)                    │
 │  └── IT Admin Assistant (Claude API, 10 whitelisted tools)       │
 ├─────────────────────────────────────────────────────────────────┤
@@ -417,10 +432,10 @@ Zero IT friction. Employees self-service in 30 seconds. Admins see all connectio
 | Feature | How It Works |
 |---------|-------------|
 | **Digital Twin** | Employee toggles ON → gets a public URL. Anyone chats with their AI agent, no login required. Agent uses employee's SOUL + memory. Toggle OFF revokes instantly |
-| **Always-on Agents** | Admin toggles any agent to ECS Fargate mode. Same Docker image, persistent container with EFS workspace. Enables scheduled tasks, direct IM bot, instant response. Tenant Router routes assigned employees to Fargate task VPC IP via SSM |
+| **Always-on Agents** | Admin toggles any agent to ECS Fargate mode via dual-tab UI. Same Docker image, persistent container with EFS workspace. 4-tier security model (Standard/Restricted/Engineering/Executive). Enables scheduled tasks, direct IM bot, instant response. Tenant Router routes to Fargate task VPC IP via SSM |
 | **SOUL Injection** | 3-layer merge (Global + Position + Personal) at session start. Position SOUL warnings in editor when edits affect N agents |
 | **Permission Control** | SOUL.md defines allowed/blocked tools per role. Plan A (pre-execution) + Plan E (post-audit). Exec profile bypasses Plan A entirely |
-| **Multi-Runtime** | Standard (Nova 2 Lite, scoped IAM) and Executive (Sonnet 4.6, full IAM) runtimes. Assign positions to runtimes from Security Center UI |
+| **Multi-Runtime** | 4-tier system (Standard / Restricted / Engineering / Executive) with per-tier model, IAM, and guardrail. Assign positions to runtimes from Security Center UI |
 | **Self-service IM Pairing** | QR code scan + `/start TOKEN` → SSM mapping written instantly. Supports Telegram, Feishu, Discord |
 | **Org Directory KB** | Seeded from org data via `seed_knowledge_docs.py`. Injected into every agent's workspace. Agents know who to contact for what |
 | **Per-employee Config** | Override model, `recentTurnsPreserve`, `maxTokens`, response language at position OR employee level. Zero redeploy |
@@ -459,7 +474,7 @@ Zero IT friction. Employees self-service in 30 seconds. Admins see all connectio
 
 **Critical — these will silently break deployment if missed:**
 
-1. **The `openclaw` npm package is pinned to `2026.3.24`** in both `agent-container/Dockerfile` and `exec-agent/Dockerfile` — do not upgrade. Newer versions changed the Gateway response delivery mechanism and break IM channel integration.
+1. **The `openclaw` npm package is pinned to `2026.3.24`** in `agent-container/Dockerfile` and `exec-agent/Dockerfile` — do not upgrade. Newer versions changed the Gateway response delivery mechanism and break IM channel integration. (The single-user EC2 template supports `2026.4.5+` but Enterprise remains on `2026.3.24`.)
 2. **Build both Docker images** — `agent-container/` (standard) and `exec-agent/` (executive). Don't skip exec even if only standard agents are needed initially.
 3. **Docker build takes 10–15 min** — `clawhub install` installs skills one by one. This is normal.
 4. **After `update-agent-runtime`**, poll until `status: READY` before testing.
@@ -539,17 +554,19 @@ bash deploy.sh --skip-seed    # update infra + image, skip DynamoDB
 ```
 
 **What `deploy.sh` does automatically (end-to-end):**
-1. Deploys CloudFormation (EC2, ECR, S3, IAM — creates or updates)
+1. Validates prerequisites and deploys CloudFormation (EC2, ECR, S3, IAM, ECS cluster — creates or updates)
 2. Packages source code → uploads to S3 → **triggers Docker build on the gateway EC2 via SSM** (ARM64 Graviton, no local Docker needed)
-3. Creates or updates AgentCore Runtime
+3. Creates or updates AgentCore Runtime(s)
 4. Creates DynamoDB table if it doesn't exist
-5. Seeds org data (employees, positions, departments, SOUL templates, knowledge docs)
-6. Stores `ADMIN_PASSWORD` and `JWT_SECRET` in SSM SecureString
-7. Builds Admin Console frontend → packages → deploys to EC2 via SSM
-8. Deploys Gateway services (Tenant Router, Bedrock H2 Proxy) to EC2
-9. Writes `/etc/openclaw/env` with all required variables (`STACK_NAME`, `DYNAMODB_TABLE`, `DYNAMODB_REGION`, ECS config, etc.)
-10. Configures systemd services and starts all components
-11. Adds ECS→SSM VPC endpoint security group rule (if VPC endpoints exist)
+4.5. Sets up **ECS Fargate tier services** (Standard/Restricted/Engineering/Executive) with tier-specific models, task definitions, and `desiredCount=0` (admin activates via Security Center)
+5. Uploads SOUL templates + skills to S3
+6. Seeds org data (employees, positions, departments, knowledge docs)
+7. Stores `ADMIN_PASSWORD` and `JWT_SECRET` in SSM SecureString
+8. Builds Admin Console frontend → packages → deploys to EC2 via SSM
+9. Deploys Gateway services (Tenant Router, Bedrock H2 Proxy) to EC2
+10. Writes `/etc/openclaw/env` with all required variables (`STACK_NAME`, `DYNAMODB_TABLE`, `DYNAMODB_REGION`, ECS config, etc.)
+11. Configures systemd services and starts all components
+12. Adds ECS→SSM VPC endpoint security group rule (if VPC endpoints exist)
 
 After deployment, get the instance ID and S3 bucket:
 
@@ -854,13 +871,14 @@ To add a new KB: Admin Console → Knowledge Base → upload Markdown → Assign
 
 | | Count | Details |
 |-|-------|---------|
-| Departments | 15 | 7 top-level + 8 sub-departments including Admin Lab |
-| Positions | 12 | SA, SDE, DevOps, QA, AE, PM, FA, HR, CSM, Legal, Executive, Platform Admin |
-| Employees | 27 | Each with workspace files in S3 |
-| Agents | 29 | 28 serverless + 1 always-on |
-| IM Channels | 5 | Telegram, Feishu, Discord, Portal, + always-on |
-| Skills | 26 | Role-scoped skill packages |
-| Knowledge Docs | 14 | 11 topic KBs + company-directory.md (org directory, auto-assigned to all positions) |
+| Departments | 7 | Engineering, Sales, Finance, HR, Product, Legal, Executive |
+| Positions | 11 | SA, SDE, DevOps, QA, AE, PM, FA, HR, CSM, Legal, Executive |
+| Employees | 20+ | Each with workspace files in S3 |
+| Agents | 20+ | Serverless (default) + always-on (admin toggle) |
+| Runtimes | 4 | Standard, Restricted, Engineering, Executive (per-tier model + IAM + guardrail) |
+| IM Channels | 4 | Telegram, Feishu, Discord, Portal |
+| Skills | 5+ | Role-scoped skill packages in S3 |
+| Knowledge Docs | 11 | Topic KBs + company-directory.md (org directory, auto-assigned to all positions) |
 | SOUL Templates | 12 | 1 global + 11 position-specific |
 | RBAC Roles | 3 | Admin, Manager, Employee |
 
@@ -916,41 +934,57 @@ vs ChatGPT Team ($25 × 50 = $1,250/mo) or Copilot ($30 × 50 = $1,500/mo).
 ```
 enterprise/
 ├── README.md
-├── deploy.sh                       # One-click deployment
+├── TESTING.md                      # Comprehensive test plan (62+ test cases)
+├── deploy.sh                       # One-click deployment (8 steps + Fargate tier setup)
 ├── clawdbot-bedrock-agentcore-multitenancy.yaml  # CloudFormation
 ├── admin-console/
-│   ├── src/pages/
-│   │   ├── Dashboard.tsx           # Setup checklist + real-time stats
-│   │   ├── AgentFactory/           # Agent list + Configuration tab
-│   │   ├── SecurityCenter.tsx      # Runtime config + ECR/IAM/VPC browser
-│   │   ├── IMChannels.tsx          # Per-channel employee management
-│   │   ├── Knowledge/index.tsx     # KB management + Assignments tab
-│   │   ├── Usage.tsx               # Billing + model pricing
-│   │   ├── TwinChat.tsx            # Public Digital Twin page (no auth)
-│   │   └── portal/
-│   │       ├── Chat.tsx            # Employee chat + warmup indicator
-│   │       └── Profile.tsx         # USER.md + memory view + Digital Twin toggle
+│   ├── src/
+│   │   ├── types/index.ts          # TypeScript types (DeployMode, Tier, AlwaysOnStatus, etc.)
+│   │   ├── contexts/
+│   │   │   └── PortalAgentContext.tsx  # Global agent type switcher (Serverless / Always-On)
+│   │   └── pages/
+│   │       ├── Dashboard.tsx           # Setup checklist + real-time stats
+│   │       ├── AgentFactory/           # Dual Agent tabs + Configuration
+│   │       ├── SecurityCenter.tsx      # Fargate card management + runtime config
+│   │       ├── IMChannels.tsx          # Per-channel employee management
+│   │       ├── Knowledge/index.tsx     # KB management + Assignments tab
+│   │       ├── Usage.tsx               # Billing + Fargate cost card
+│   │       ├── Settings.tsx            # Account, Logs, Assistant, Fargate config tab
+│   │       ├── TwinChat.tsx            # Public Digital Twin page (no auth)
+│   │       └── portal/
+│   │           ├── Chat.tsx            # Agent mode badge + warmup indicator
+│   │           ├── BindIM.tsx          # Pairing (serverless) + credential forms (always-on)
+│   │           ├── MyAgents.tsx        # Dual agent cards
+│   │           ├── MySkills.tsx        # agent_type-aware skill listing
+│   │           ├── MyUsage.tsx         # agent_type-aware usage
+│   │           ├── MyRequests.tsx      # Tool/skill access requests
+│   │           └── Profile.tsx         # USER.md + memory + Digital Twin + deploy mode
 │   └── server/
-│       ├── main.py                 # App bootstrap — routes in routers/
-│       ├── shared.py               # Auth helpers, config, SSM/DDB helpers
-│       ├── routers/                # 16 domain routers (127 API endpoints)
+│       ├── main.py                 # App bootstrap — CORS, auth middleware
+│       ├── auth.py                 # JWT auth + UserContext
+│       ├── db.py                   # DynamoDB single-table + Digital Twin CRUD
+│       ├── password.py             # bcrypt password hashing
+│       ├── routers/                # 16 domain routers (130+ API endpoints)
 │       │   ├── org.py agents.py bindings.py knowledge.py
 │       │   ├── portal.py playground.py monitor.py audit.py
 │       │   ├── usage.py settings.py security.py
 │       │   ├── admin_im.py admin_ai.py admin_always_on.py
 │       │   ├── gateway_proxy.py twin.py
 │       │   └── __init__.py
-│       ├── db.py                   # DynamoDB single-table + Digital Twin CRUD
 │       └── seed_*.py               # Sample data scripts
-├── agent-container/                # AgentCore Docker image
+├── agent-container/                # AgentCore Docker image (OpenClaw 2026.3.24)
 │   ├── server.py                   # Workspace assembly + twin/always-on detection
 │   ├── workspace_assembler.py      # 3-layer SOUL merge + KB injection
-│   └── permissions.py              # SSM permission profiles (base_id extraction)
+│   ├── permissions.py              # SSM permission profiles (base_id extraction)
+│   └── skills/                     # Enterprise skills (eventbridge-cron, etc.)
 ├── exec-agent/                     # Executive tier Docker image
 │   └── Dockerfile                  # All skills pre-installed, Sonnet 4.6
-└── gateway/
-    ├── bedrock_proxy_h2.js         # H2 Proxy (channel detection, pairing intercept)
-    └── tenant_router.py            # 3-tier routing + always-on container support
+├── gateway/
+│   ├── bedrock_proxy_h2.js         # H2 Proxy (channel detection, pairing intercept)
+│   └── tenant_router.py            # 3-tier routing + always-on container support
+└── docs/
+    ├── environments.md             # Environment registry (prod, test, legacy)
+    └── worklog-*.md                # Development session logs
 ```
 
 ## Operational Notes

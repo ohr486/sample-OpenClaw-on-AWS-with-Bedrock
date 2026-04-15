@@ -33,7 +33,7 @@ import auth as authmod
 # =========================================================================
 
 app = FastAPI(title="OpenClaw Admin API", version="0.5.0")
-_ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "https://openclaw.awspsa.com,http://localhost:5173,http://localhost:8099").split(",")
+_ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "https://openclaw.awspsa.com,https://dev-openclaw.awspsa.com,http://localhost:5173,http://localhost:8099").split(",")
 app.add_middleware(CORSMiddleware, allow_origins=_ALLOWED_ORIGINS, allow_methods=["GET","POST","PUT","DELETE","OPTIONS"], allow_headers=["Content-Type","Authorization"])
 
 

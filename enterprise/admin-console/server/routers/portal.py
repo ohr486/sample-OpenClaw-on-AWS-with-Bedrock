@@ -378,6 +378,10 @@ def portal_chat(body: PortalChatMessage, authorization: str = Header(default="")
     """Employee sends message to their bound agent via Tenant Router."""
     user = require_auth(authorization)
 
+    if not body.message or not body.message.strip():
+        raise HTTPException(400, "Message cannot be empty")
+    body.message = body.message.strip()
+
     # Find employee's 1:1 binding
     bindings = db.get_bindings()
     my_binding = next((b for b in bindings if b.get("employeeId") == user.employee_id and b.get("mode") == "1:1"), None)
