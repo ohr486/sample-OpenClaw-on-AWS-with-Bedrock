@@ -233,14 +233,16 @@ resource "helm_release" "litellm" {
     value = "true"
   }
 
-  # Enable Prometheus metrics callback
-  set {
-    name  = "proxy_config.litellm_settings.callbacks[0]"
-    value = "prometheus"
+  # Prometheus metrics callback — only enable when Prometheus is deployed
+  dynamic "set" {
+    for_each = var.enable_monitoring ? [1] : []
+    content {
+      name  = "proxy_config.litellm_settings.callbacks[0]"
+      value = "prometheus"
+    }
   }
 
-  # Disable built-in ServiceMonitor -- we create a custom one below with
-  # the correct scrape path.
+  # Always disable built-in ServiceMonitor (we create our own when needed)
   set {
     name  = "serviceMonitor.enabled"
     value = "false"
@@ -248,10 +250,11 @@ resource "helm_release" "litellm" {
 }
 
 ################################################################################
-# ServiceMonitor for Prometheus scraping
+# ServiceMonitor for Prometheus scraping (only when enable_monitoring = true)
 ################################################################################
 
 resource "kubectl_manifest" "litellm_servicemonitor" {
+  count = var.enable_monitoring ? 1 : 0
   yaml_body = yamlencode({
     apiVersion = "monitoring.coreos.com/v1"
     kind       = "ServiceMonitor"

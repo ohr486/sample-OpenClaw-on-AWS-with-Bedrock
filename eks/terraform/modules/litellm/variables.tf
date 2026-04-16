@@ -46,3 +46,9 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "enable_monitoring" {
+  description = "Enable Prometheus ServiceMonitor and metrics. Set to true only when monitoring stack (kube-prometheus-stack) is deployed."
+  type        = bool
+  default     = false
+}
