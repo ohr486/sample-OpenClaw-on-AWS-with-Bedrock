@@ -67,6 +67,8 @@ resource "aws_iam_policy" "litellm_bedrock" {
       Action = [
         "bedrock:InvokeModel",
         "bedrock:InvokeModelWithResponseStream",
+        "aws-marketplace:ViewSubscriptions",
+        "aws-marketplace:Subscribe",
       ]
       Resource = "*"
     }]
