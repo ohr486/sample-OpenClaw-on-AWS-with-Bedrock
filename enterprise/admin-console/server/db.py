@@ -202,6 +202,15 @@ def get_employees() -> list[dict]:
 def get_employee(emp_id: str) -> Optional[dict]:
     return _get_item(f"EMP#{emp_id}")
 
+def get_employee_by_email(email: str) -> Optional[dict]:
+    """Look up an employee by email address (case-insensitive).
+    Scans EMP# items — dataset is small (<100 employees), so scan is fine."""
+    email_lower = email.lower()
+    for emp in get_employees():
+        if emp.get("email", "").lower() == email_lower:
+            return emp
+    return None
+
 def get_employee_with_password(emp_id: str) -> Optional[dict]:
     """Get employee including passwordHash (for auth only). Do not expose in API responses."""
     try:

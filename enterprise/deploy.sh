@@ -430,8 +430,20 @@ else
 
   # Define tiers: name:model:guardrailId
   # desiredCount=0 for all — admin activates via Security Center
+  # Using case statements instead of associative arrays for bash 3.x (macOS) compatibility
+  _GUARDRAIL_MODERATE="${GUARDRAIL_MODERATE_ID:-}"
+  _GUARDRAIL_STRICT="${GUARDRAIL_STRICT_ID:-}"
+
   for TIER_NAME in standard restricted engineering executive; do
     SERVICE_NAME="${STACK_NAME}-tier-${TIER_NAME}"
+    case "$TIER_NAME" in
+      standard)    TIER_MODEL="${MODEL:-global.amazon.nova-2-lite-v1:0}"; TIER_GUARDRAIL="$_GUARDRAIL_MODERATE" ;;
+      restricted)  TIER_MODEL="us.deepseek.r1-v1:0"; TIER_GUARDRAIL="$_GUARDRAIL_STRICT" ;;
+      engineering) TIER_MODEL="global.anthropic.claude-sonnet-4-5-20250929-v1:0"; TIER_GUARDRAIL="" ;;
+      executive)   TIER_MODEL="global.anthropic.claude-sonnet-4-6"; TIER_GUARDRAIL="" ;;
+    esac
+
+    # Register tier-specific task definition with tier env vars
     TIER_FAMILY="${STACK_NAME}-tier-${TIER_NAME}"
     case "$TIER_NAME" in
       standard)    TIER_MODEL="${MODEL:-global.amazon.nova-2-lite-v1:0}"; TIER_GUARDRAIL="${GUARDRAIL_MODERATE_ID:-}" ;;
@@ -742,6 +754,8 @@ ECS_TASK_SG=${ECS_TASK_SG}
 ECS_SUBNET=${ECS_SUBNET}
 EFS_ID=${EFS_ID}
 ADMIN_PASSWORD=${ADMIN_PASSWORD}
+AZURE_TENANT_ID=${AZURE_TENANT_ID:-}
+AZURE_CLIENT_ID=${AZURE_CLIENT_ID:-}
 CRON_LAMBDA_ARN=${CRON_LAMBDA_ARN}
 CRON_SCHEDULER_ROLE_ARN=${CRON_SCHEDULER_ROLE_ARN}
 ENVEOF

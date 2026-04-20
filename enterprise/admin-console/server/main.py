@@ -88,7 +88,8 @@ async def auth_middleware(request: Request, call_next):
             content={"detail": "Authentication required"},
         )
 
-    # Block users who must change password from all endpoints except change-password and auth/me
+    # Block users who must change password (local JWT only) from all endpoints
+    # except change-password and auth/me
     if user.must_change_password and path not in (
         "/api/v1/auth/change-password",
         "/api/v1/auth/me",
@@ -141,7 +142,8 @@ app.include_router(_admin_always_on_router)
 app.include_router(_twin_router)
 
 # =========================================================================
-# Auth — Login + current user (stays in main.py — needed by app startup)
+# Auth — Login + change password + current user
+# Supports both Azure AD (RS256) and local password (HS256) auth.
 # =========================================================================
 
 from fastapi import HTTPException, Header
@@ -155,8 +157,7 @@ class LoginRequest(BaseModel):
 
 @app.post("/api/v1/auth/login")
 def login(body: LoginRequest):
-    """Authenticate employee and return JWT token."""
-    # Look up employee — use get_employee_with_password to access passwordHash
+    """Authenticate employee with ID + password and return a local HS256 JWT."""
     employees_public = db.get_employees()
     emp_public = next((e for e in employees_public if e["id"] == body.employeeId or e.get("employeeNo") == body.employeeId), None)
     if not emp_public:
@@ -166,17 +167,13 @@ def login(body: LoginRequest):
     if not emp_full:
         raise HTTPException(401, "Employee not found")
 
-    # Dual-path password verification
     import hmac as _hmac
     from password import verify_password
     password_hash = emp_full.get("passwordHash", "")
     if password_hash:
-        # Employee has set a personal password — verify against bcrypt hash
         if not verify_password(body.password, password_hash):
             raise HTTPException(401, "Invalid password")
     else:
-        # No personal password yet — verify against global ADMIN_PASSWORD
-        # Use constant-time comparison to prevent timing attacks
         expected_password = os.environ.get("ADMIN_PASSWORD", "")
         if not expected_password:
             raise HTTPException(500, "ADMIN_PASSWORD environment variable not set")
@@ -207,7 +204,7 @@ class ChangePasswordRequest(BaseModel):
 
 @app.post("/api/v1/auth/change-password")
 def change_password(body: ChangePasswordRequest, authorization: str = Header(default="")):
-    """Change the authenticated employee's password."""
+    """Change the authenticated employee's password (local auth only)."""
     import hmac as _hmac
     from shared import require_auth
     from password import hash_password, verify_password, validate_complexity
@@ -217,7 +214,6 @@ def change_password(body: ChangePasswordRequest, authorization: str = Header(def
     if not emp_full:
         raise HTTPException(404, "Employee not found")
 
-    # Verify current password (dual-path)
     password_hash = emp_full.get("passwordHash", "")
     if password_hash:
         if not verify_password(body.currentPassword, password_hash):
@@ -227,23 +223,19 @@ def change_password(body: ChangePasswordRequest, authorization: str = Header(def
         if not _hmac.compare_digest(body.currentPassword, expected_password):
             raise HTTPException(401, "Current password is incorrect")
 
-    # New password must differ from current
     if body.newPassword == body.currentPassword:
         raise HTTPException(400, "New password must be different from current password")
 
-    # Validate new password complexity
     error = validate_complexity(body.newPassword)
     if error:
         raise HTTPException(400, error)
 
-    # Hash and store
     hashed = hash_password(body.newPassword)
     db.update_employee(user.employee_id, {
         "passwordHash": hashed,
         "mustChangePassword": False,
     })
 
-    # Issue new token with mustChangePassword=False
     emp_updated = db.get_employee(user.employee_id)
     new_token = authmod.create_token(emp_updated, must_change_password=False)
     return {"token": new_token, "changed": True}
@@ -251,7 +243,7 @@ def change_password(body: ChangePasswordRequest, authorization: str = Header(def
 
 @app.get("/api/v1/auth/me")
 def get_me(authorization: str = Header(default="")):
-    """Get current authenticated user info."""
+    """Get current authenticated user info (works with both Azure AD and local JWT)."""
     from shared import require_auth
     user = require_auth(authorization)
     emp = db.get_employee(user.employee_id)
@@ -267,6 +259,7 @@ def get_me(authorization: str = Header(default="")):
         "positionName": emp.get("positionName", ""),
         "agentId": emp.get("agentId"),
         "channels": emp.get("channels", []),
+        "email": user.email,
         "mustChangePassword": user.must_change_password,
     }
 

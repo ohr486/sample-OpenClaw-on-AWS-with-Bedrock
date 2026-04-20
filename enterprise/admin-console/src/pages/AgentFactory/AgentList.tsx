@@ -247,7 +247,8 @@ export default function AgentList() {
                       {isOn ? (
                         <Button size="sm" variant="ghost" className="text-danger"
                           onClick={async () => {
-                            await fetch(`/api/v1/admin/always-on/${a.id}/stop`, { method: 'POST', headers: { Authorization: `Bearer ${localStorage.getItem('openclaw_token')}` } });
+                            const token = await (window as any).__openclaw_getToken?.();
+                            await fetch(`/api/v1/admin/always-on/${a.id}/stop`, { method: 'POST', headers: { Authorization: `Bearer ${token || ''}` } });
                             window.location.reload();
                           }}>
                           <Trash2 size={13} /> Stop
@@ -255,7 +256,8 @@ export default function AgentList() {
                       ) : (
                         <Button size="sm" variant="primary"
                           onClick={async () => {
-                            await fetch(`/api/v1/admin/always-on/${a.id}/start`, { method: 'POST', headers: { Authorization: `Bearer ${localStorage.getItem('openclaw_token')}` } });
+                            const token = await (window as any).__openclaw_getToken?.();
+                            await fetch(`/api/v1/admin/always-on/${a.id}/start`, { method: 'POST', headers: { Authorization: `Bearer ${token || ''}` } });
                             window.location.reload();
                           }}>
                           <Zap size={13} /> Start

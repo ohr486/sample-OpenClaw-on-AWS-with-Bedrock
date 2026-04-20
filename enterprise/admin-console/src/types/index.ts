@@ -38,6 +38,7 @@ export interface Employee {
   agentStatus: 'active' | 'idle' | 'archived';
   personalPrefs: string;      // USER.md summary
   role?: 'admin' | 'manager' | 'employee';
+  email?: string;
   createdAt: string;
 }
 

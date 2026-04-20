@@ -36,5 +36,8 @@ enterprise/catnip-mascot/
 enterprise/.env
 enterprise/.env.*
 !enterprise/.env.example
+enterprise/admin-console/.env
+enterprise/admin-console/.env.*
+!enterprise/admin-console/.env.sample
 .claude/
 enterprise/docs/environments.md

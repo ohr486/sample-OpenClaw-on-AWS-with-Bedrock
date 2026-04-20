@@ -401,7 +401,7 @@ function GatewayConsoleButton() {
     setError('');
     setCountdown(20);
     try {
-      const jwt = localStorage.getItem('openclaw_token') || '';
+      const jwt = await (window as any).__openclaw_getToken?.() || '';
       const resp = await fetch('/api/v1/portal/gateway/dashboard', {
         headers: { 'Authorization': `Bearer ${jwt}` },
       });

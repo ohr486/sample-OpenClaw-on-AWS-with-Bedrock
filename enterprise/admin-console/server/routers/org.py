@@ -169,7 +169,7 @@ def create_employee(body: dict):
 def update_employee(emp_id: str, body: dict, authorization: str = Header(default="")):
     require_role(authorization, roles=["admin"])
     body.pop("id", None)
-    body.pop("passwordHash", None)  # password changes must go through /auth/change-password
+    body.pop("passwordHash", None)
 
     # Detect position change — if employee has always-on, warn about restart needed
     old_emp = db.get_employee(emp_id)

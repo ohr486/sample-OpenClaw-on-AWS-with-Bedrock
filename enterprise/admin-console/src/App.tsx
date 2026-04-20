@@ -29,9 +29,6 @@ import Approvals from './pages/Approvals';
 import KnowledgeBase from './pages/Knowledge/index';
 import Workspace from './pages/Workspace/index';
 
-// Auth flow pages
-import ForceChangePassword from './pages/ForceChangePassword';
-
 // Public pages (no auth required)
 import TwinChat from './pages/TwinChat';
 
@@ -44,8 +41,11 @@ import PortalMyRequests from './pages/portal/MyRequests';
 import PortalBindIM from './pages/portal/BindIM';
 import PortalMyAgents from './pages/portal/MyAgents';
 
+// Auth flow pages
+import ForceChangePassword from './pages/ForceChangePassword';
+
 function AppRoutes() {
-  const { user, loading } = useAuth();
+  const { user, loading, authMode } = useAuth();
 
   if (loading) {
     return (
@@ -58,8 +58,8 @@ function AppRoutes() {
     );
   }
 
-  // Force password change gate — blocks all navigation until password is set
-  if (user?.mustChangePassword) {
+  // Force password change gate — only for local (password) auth
+  if (authMode === 'local' && user?.mustChangePassword) {
     return (
       <Routes>
         <Route path="/change-password" element={<ForceChangePassword />} />

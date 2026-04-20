@@ -54,7 +54,7 @@ echo ">>> Phase 2: Building admin console frontend..."
 # create root-owned files that the ubuntu user can't manage later.
 ADMIN_CONSOLE_DIR="$(pwd)/enterprise/admin-console"
 chown -R ubuntu:ubuntu "$ADMIN_CONSOLE_DIR"
-su - ubuntu -c "source /home/ubuntu/.nvm/nvm.sh && cd '$ADMIN_CONSOLE_DIR' && npm install --no-audit --no-fund && npx vite build"
+su - ubuntu -c "source /home/ubuntu/.nvm/nvm.sh && cd '$ADMIN_CONSOLE_DIR' && npm install --no-audit --no-fund && VITE_AZURE_CLIENT_ID='${AZURE_CLIENT_ID:-}' VITE_AZURE_TENANT_ID='${AZURE_TENANT_ID:-}' npx vite build"
 
 # ── Phase 3: Set up Python venv ──────────────────────────────────────────────
 
@@ -63,7 +63,8 @@ echo ">>> Phase 3: Setting up Python venv..."
 python3 -m venv /opt/admin-venv
 /opt/admin-venv/bin/pip install --upgrade pip
 /opt/admin-venv/bin/pip install \
-  fastapi uvicorn boto3 requests python-multipart anthropic
+  fastapi uvicorn boto3 requests python-multipart anthropic \
+  "PyJWT[crypto]>=2.8.0" "bcrypt>=4.0.0"
 
 # ── Phase 4: Install files ───────────────────────────────────────────────────
 

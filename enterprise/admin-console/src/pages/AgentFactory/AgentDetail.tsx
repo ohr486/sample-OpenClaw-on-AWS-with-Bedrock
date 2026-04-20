@@ -101,8 +101,9 @@ export default function AgentDetail() {
             <Button variant="default" onClick={() => navigate(`/workspace?agent=${agent.id}`)}><FolderOpen size={16} /> Workspace</Button>
             <Button variant="default" onClick={async () => {
               try {
+                const token = await (window as any).__openclaw_getToken?.();
                 await fetch(`/api/v1/admin/refresh-agent/${agent.employeeId}`, {
-                  method: 'POST', headers: { Authorization: `Bearer ${localStorage.getItem('openclaw_token')}` }
+                  method: 'POST', headers: { Authorization: `Bearer ${token || ''}` }
                 });
                 alert('Agent session terminated. Next message will trigger fresh assembly.');
               } catch { alert('Refresh failed'); }

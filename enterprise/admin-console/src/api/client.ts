@@ -1,20 +1,23 @@
 const BASE = '/api/v1';
 
-function getAuthHeaders(): Record<string, string> {
+async function getAuthHeaders(): Promise<Record<string, string>> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  const token = (window as any).__openclaw_token || localStorage.getItem('openclaw_token');
-  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const getToken = (window as any).__openclaw_getToken;
+  if (getToken) {
+    const token = await getToken();
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+  }
   return headers;
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const headers = await getAuthHeaders();
   const res = await fetch(`${BASE}${path}`, {
-    headers: getAuthHeaders(),
+    headers,
     ...options,
   });
   if (res.status === 401) {
-    // Token expired or invalid — clear and redirect to login
-    localStorage.removeItem('openclaw_token');
+    // Token expired or invalid — redirect to login
     if (window.location.pathname !== '/login') {
       window.location.href = '/login';
     }
@@ -33,8 +36,8 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
 export const api = {
   get: <T>(path: string) => request<T>(path),
-  post: <T>(path: string, body: unknown) =>
-    request<T>(path, { method: 'POST', body: JSON.stringify(body) }),
+  post: <T>(path: string, body?: unknown) =>
+    request<T>(path, { method: 'POST', body: body != null ? JSON.stringify(body) : undefined }),
   put: <T>(path: string, body: unknown) =>
     request<T>(path, { method: 'PUT', body: JSON.stringify(body) }),
   del: <T>(path: string) => request<T>(path, { method: 'DELETE' }),

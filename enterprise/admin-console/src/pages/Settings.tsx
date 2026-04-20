@@ -3,7 +3,7 @@ import {
   User, Globe, MessageSquare, Server,
   Eye, EyeOff, Check, X, RefreshCw, HardDrive,
   Cpu, MemoryStick, Wifi, WifiOff,
-  Terminal, Trash2, RotateCw, Copy, Clock, History,
+  Terminal, Trash2, RotateCw, Copy, History,
 } from 'lucide-react';
 import { Card, Badge, Button, PageHeader, Tabs, Select } from '../components/ui';
 import {
@@ -37,7 +37,7 @@ function copyToClipboard(text: string) {
 // ─── Account Tab ─────────────────────────────────────────────────────────────
 
 function AccountTab() {
-  const { user } = useAuth();
+  const { user, authMode } = useAuth();
   const changePw = useChangeAdminPassword();
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
@@ -67,7 +67,9 @@ function AccountTab() {
           {[
             { label: 'Name', value: user?.name || 'Admin' },
             { label: 'Role', value: 'Administrator' },
-            { label: 'Employee ID', value: user?.id || '—' },
+            { label: 'Employee ID', value: user?.id || '---' },
+            { label: 'Email', value: user?.email || '---' },
+            { label: 'Auth Mode', value: authMode === 'azure' ? 'Microsoft Entra ID' : 'Password' },
           ].map(f => (
             <div key={f.label} className="flex items-center justify-between rounded-xl bg-surface-dim px-4 py-3">
               <span className="text-xs text-text-muted">{f.label}</span>
@@ -77,43 +79,49 @@ function AccountTab() {
         </div>
       </Card>
 
-      <Card>
-        <h3 className="text-sm font-semibold text-text-primary mb-4 flex items-center gap-2">
-          <User size={16} className="text-primary" /> Change Password
-        </h3>
-        <div className="space-y-3">
-          {[
-            { label: 'Current password', value: current, set: setCurrent },
-            { label: 'New password', value: next, set: setNext },
-            { label: 'Confirm new password', value: confirm, set: setConfirm },
-          ].map(f => (
-            <div key={f.label}>
-              <label className="mb-1.5 block text-xs font-medium text-text-secondary">{f.label}</label>
-              <div className="relative">
-                <input
-                  type={showPw ? 'text' : 'password'}
-                  value={f.value}
-                  onChange={e => f.set(e.target.value)}
-                  className="w-full rounded-xl border border-dark-border/60 bg-surface-dim px-4 py-2.5 pr-10 text-sm text-text-primary focus:border-primary/60 focus:outline-none"
-                />
-                <button onClick={() => setShowPw(s => !s)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary">
-                  {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
-                </button>
-              </div>
-            </div>
-          ))}
-          {msg && (
-            <div className={`flex items-center gap-2 rounded-xl px-3 py-2.5 text-xs ${msg.ok ? 'bg-success/10 text-success' : 'bg-danger/10 text-danger'}`}>
-              {msg.ok ? <Check size={14} /> : <X size={14} />} {msg.text}
-            </div>
-          )}
-          <Button variant="primary" className="w-full" disabled={changePw.isPending}
-            onClick={handleChange}>
-            {changePw.isPending ? 'Updating...' : 'Update Password'}
-          </Button>
+      {authMode === 'azure' ? (
+        <div className="rounded-xl bg-info/5 border border-info/20 px-4 py-3 text-xs text-info">
+          Authenticated via Microsoft Entra ID. To change your password, visit your organization's Azure AD portal.
         </div>
-      </Card>
+      ) : (
+        <Card>
+          <h3 className="text-sm font-semibold text-text-primary mb-4 flex items-center gap-2">
+            <User size={16} className="text-primary" /> Change Password
+          </h3>
+          <div className="space-y-3">
+            {[
+              { label: 'Current password', value: current, set: setCurrent },
+              { label: 'New password', value: next, set: setNext },
+              { label: 'Confirm new password', value: confirm, set: setConfirm },
+            ].map(f => (
+              <div key={f.label}>
+                <label className="mb-1.5 block text-xs font-medium text-text-secondary">{f.label}</label>
+                <div className="relative">
+                  <input
+                    type={showPw ? 'text' : 'password'}
+                    value={f.value}
+                    onChange={e => f.set(e.target.value)}
+                    className="w-full rounded-xl border border-dark-border/60 bg-surface-dim px-4 py-2.5 pr-10 text-sm text-text-primary focus:border-primary/60 focus:outline-none"
+                  />
+                  <button onClick={() => setShowPw(s => !s)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary">
+                    {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
+                  </button>
+                </div>
+              </div>
+            ))}
+            {msg && (
+              <div className={`flex items-center gap-2 rounded-xl px-3 py-2.5 text-xs ${msg.ok ? 'bg-success/10 text-success' : 'bg-danger/10 text-danger'}`}>
+                {msg.ok ? <Check size={14} /> : <X size={14} />} {msg.text}
+              </div>
+            )}
+            <Button variant="primary" className="w-full" disabled={changePw.isPending}
+              onClick={handleChange}>
+              {changePw.isPending ? 'Updating...' : 'Update Password'}
+            </Button>
+          </div>
+        </Card>
+      )}
     </div>
   );
 }
