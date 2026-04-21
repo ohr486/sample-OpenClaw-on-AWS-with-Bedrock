@@ -88,7 +88,6 @@ Parameters:
     Default: "true"
     Description: "Install Docker for sandboxed execution (recommended for group chats)"
 
-<<<<<<< HEAD
   OpenClawVersion:
     Type: String
     Default: "2026.3.24"
@@ -97,7 +96,7 @@ Parameters:
       - "2026.4.5"
       - "latest"
     Description: "OpenClaw version. 2026.3.24 (default, no model approval needed, WeChat compatible). 2026.4.5+ (auto-discovery, embeddings)."
-=======
+
   EnableMonitoring:
     Type: String
     Default: "true"
@@ -105,7 +104,6 @@ Parameters:
     AllowedValues:
       - "true"
       - "false"
->>>>>>> 2083831 (feat: reliability improvements with optional monitoring)
 
   EnableDataProtection:
     Type: String
@@ -383,7 +381,6 @@ Resources:
                   - 'bedrock:ListFoundationModels'
                   - 'bedrock:GetFoundationModel'
                   - 'bedrock:ListInferenceProfiles'
-<<<<<<< HEAD
                 Resource: '*'
         - PolicyName: BedrockMantleAccessPolicy
           PolicyDocument:
@@ -392,8 +389,6 @@ Resources:
               - Effect: Allow
                 Action:
                   - 'bedrock-mantle:*'
-=======
->>>>>>> 2083831 (feat: reliability improvements with optional monitoring)
                 Resource: '*'
         - !If
           - EnableCW
@@ -1112,7 +1107,7 @@ Resources:
                           "disk": { "measurement": ["disk_used_percent"], "resources": ["/", "/data"], "metrics_collection_interval": 300 },
                           "swap": { "measurement": ["swap_used_percent"], "metrics_collection_interval": 300 }
                         },
-                        "append_dimensions": { "InstanceId": "${aws:InstanceId}" }
+                        "append_dimensions": { "InstanceId": "$INSTANCE_ID" }
                       },
                       "logs": {
                         "logs_collected": {
